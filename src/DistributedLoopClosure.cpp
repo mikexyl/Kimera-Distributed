@@ -11,9 +11,9 @@
 #include <gtsam/geometry/Pose3.h>
 #include <kimera_multi_lcd/io.h>
 #include <kimera_multi_lcd/utils.h>
-#include <pose_graph_tools_msgs/PoseGraph.h>
-#include <pose_graph_tools_msgs/VLCFrameQuery.h>
+#include <pose_graph_tools_msgs/msg/pose_graph.hpp>
 #include <pose_graph_tools_ros/utils.h>
+#include <rclcpp/rclcpp.hpp>
 
 #include <cassert>
 #include <fstream>
@@ -99,7 +99,7 @@ void DistributedLoopClosure::initialize(const DistributedLoopClosureConfig& conf
 }
 
 void DistributedLoopClosure::processBow(
-    const pose_graph_tools_msgs::BowQueriesConstPtr& query_msg) {
+    const pose_graph_tools_msgs::msg::BowQueries::SharedPtr query_msg) {
   for (const auto& msg : query_msg->queries) {
     lcd::RobotId robot_id = msg.robot_id;
     lcd::PoseId pose_id = msg.pose_id;
@@ -121,10 +121,10 @@ void DistributedLoopClosure::processBow(
 }
 
 bool DistributedLoopClosure::processLocalPoseGraph(
-    const pose_graph_tools_msgs::PoseGraph::ConstPtr& msg) {
+    const pose_graph_tools_msgs::msg::PoseGraph::SharedPtr msg) {
   // Parse odometry edges and create new keyframes in the submap atlas
-  std::vector<pose_graph_tools_msgs::PoseGraphEdge> local_loop_closures;
-  const uint64_t ts = msg->header.stamp.toNSec();
+  std::vector<pose_graph_tools_msgs::msg::PoseGraphEdge> local_loop_closures;
+  const uint64_t ts = rclcpp::Time(msg->header.stamp).nanoseconds();
 
   bool incremental_pub = true;
   if (submap_atlas_->numSubmaps() == 0 && !msg->nodes.empty()) {
@@ -155,12 +155,12 @@ bool DistributedLoopClosure::processLocalPoseGraph(
   // Extract timestamps of each new pose node
   std::map<int, uint64_t> node_timestamps;
   for (const auto& pg_node : msg->nodes) {
-    node_timestamps[(int)pg_node.key] = pg_node.header.stamp.toNSec();
+    node_timestamps[(int)pg_node.key] = rclcpp::Time(pg_node.header.stamp).nanoseconds();
   }
 
   for (const auto& pg_edge : msg->edges) {
     if (pg_edge.robot_from == config_.my_id_ && pg_edge.robot_to == config_.my_id_ &&
-        pg_edge.type == pose_graph_tools_msgs::PoseGraphEdge::ODOM) {
+        pg_edge.type == pose_graph_tools_msgs::msg::PoseGraphEdge::ODOM) {
       int frame_src = (int)pg_edge.key_from;
       int frame_dst = (int)pg_edge.key_to;
       CHECK_EQ(frame_src + 1, frame_dst);
@@ -193,7 +193,7 @@ bool DistributedLoopClosure::processLocalPoseGraph(
       }
     } else if (pg_edge.robot_from == config_.my_id_ &&
                pg_edge.robot_to == config_.my_id_ &&
-               pg_edge.type == pose_graph_tools_msgs::PoseGraphEdge::LOOPCLOSE) {
+               pg_edge.type == pose_graph_tools_msgs::msg::PoseGraphEdge::LOOPCLOSE) {
       local_loop_closures.push_back(pg_edge);
     }
   }
@@ -237,7 +237,7 @@ bool DistributedLoopClosure::processLocalPoseGraph(
   return incremental_pub;
 }
 
-void DistributedLoopClosure::processOptimizedPath(const nav_msgs::PathConstPtr& msg) {
+void DistributedLoopClosure::processOptimizedPath(const nav_msgs::msg::Path::SharedPtr msg) {
   if (msg->poses.empty()) {
     return;
   }
@@ -567,7 +567,7 @@ void DistributedLoopClosure::detectLoopSpin() {
     if (it == bow_msgs_.end()) {
       break;
     }
-    const pose_graph_tools_msgs::BowQuery msg = *it;
+    const pose_graph_tools_msgs::msg::BowQuery msg = *it;
     lcd::RobotId query_robot = msg.robot_id;
     lcd::PoseId query_pose = msg.pose_id;
     lcd::RobotPoseId query_vertex(query_robot, query_pose);
@@ -695,7 +695,7 @@ void DistributedLoopClosure::verifyLoopSpin() {
           keyframe_edge.normalized_bow_score_ = match_score;
           keyframe_edge.mono_inliers_ = mono_inliers_count;
           keyframe_edge.stereo_inliers_ = stereo_inliers_count;
-          keyframe_edge.stamp_ns_ = ros::Time::now().toNSec();
+          keyframe_edge.stamp_ns_ = rclcpp::Clock().now().nanoseconds();
           const auto frame1 = lcd_->getVLCFrame(vertex_query);
           const auto frame2 = lcd_->getVLCFrame(vertex_match);
           gtsam::Symbol keyframe_from(robot_id_to_prefix.at(frame1.robot_id_),
@@ -766,12 +766,12 @@ void DistributedLoopClosure::verifyLoopSpin() {
   }
 }
 
-pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
+pose_graph_tools_msgs::msg::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
     bool incremental) {
   // Start submap critical section
   // std::unique_lock<std::mutex> submap_lock(submap_atlas_mutex_);
   // Fill in submap-level loop closures
-  pose_graph_tools_msgs::PoseGraph out_graph;
+  pose_graph_tools_msgs::msg::PoseGraph out_graph;
 
   if (submap_atlas_->numSubmaps() == 0) {
     return out_graph;
@@ -791,7 +791,7 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
   size_t start_idx = incremental ? last_get_submap_idx_ : 0;
   size_t end_idx = submap_atlas_->numSubmaps() - 1;
   for (int submap_id = start_idx; submap_id < end_idx; ++submap_id) {
-    pose_graph_tools_msgs::PoseGraphEdge edge;
+    pose_graph_tools_msgs::msg::PoseGraphEdge edge;
     const auto submap_src = CHECK_NOTNULL(submap_atlas_->getSubmap(submap_id));
     const auto submap_dst = CHECK_NOTNULL(submap_atlas_->getSubmap(submap_id + 1));
     const auto T_odom_src = submap_src->getPoseInOdomFrame();
@@ -801,9 +801,9 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
     edge.robot_to = config_.my_id_;
     edge.key_from = submap_src->id();
     edge.key_to = submap_dst->id();
-    edge.type = pose_graph_tools_msgs::PoseGraphEdge::ODOM;
+    edge.type = pose_graph_tools_msgs::msg::PoseGraphEdge::ODOM;
     edge.pose = GtsamPoseToRos(T_src_dst);
-    edge.header.stamp.fromNSec(submap_dst->stamp());
+    edge.header.stamp = rclcpp::Time(submap_dst->stamp());
     // TODO(yun) add frame id param
     edge.header.frame_id = config_.frame_id_;
     out_graph.edges.push_back(edge);
@@ -812,15 +812,15 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
   // Fill in submap nodes
   start_idx = (incremental) ? start_idx + 1 : start_idx;
   for (int submap_id = start_idx; submap_id < end_idx + 1; ++submap_id) {
-    pose_graph_tools_msgs::PoseGraphNode node;
+    pose_graph_tools_msgs::msg::PoseGraphNode node;
     const auto submap = CHECK_NOTNULL(submap_atlas_->getSubmap(submap_id));
     node.robot_id = config_.my_id_;
     node.key = submap->id();
-    node.header.stamp.fromNSec(submap->stamp());
+    node.header.stamp = rclcpp::Time(submap->stamp());
     node.header.frame_id = config_.frame_id_;
     node.pose = GtsamPoseToRos(submap->getPoseInOdomFrame());
     out_graph.nodes.push_back(node);
-    out_graph.header.stamp.fromNSec(submap->stamp());
+    out_graph.header.stamp = rclcpp::Time(submap->stamp());
     out_graph.header.frame_id = config_.frame_id_;
   }
 
@@ -832,7 +832,7 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
 }
 
 void DistributedLoopClosure::processInternalVLC(
-    const pose_graph_tools_msgs::VLCFramesConstPtr& msg) {
+    const pose_graph_tools_msgs::msg::VLCFrames::SharedPtr msg) {
   for (const auto& frame_msg : msg->frames) {
     lcd::VLCFrame frame;
     kimera_multi_lcd::VLCFrameFromMsg(frame_msg, &frame);
@@ -952,10 +952,10 @@ void DistributedLoopClosure::saveVLCFrames(const std::string& filepath) const {
 
 void DistributedLoopClosure::loadBowVectors(size_t robot_id,
                                             const std::string& bow_json) {
-  ROS_INFO_STREAM("Loading BoW vectors from " << bow_json);
+  LOG(INFO) << "Loading BoW vectors from " << bow_json;
   std::map<lcd::PoseId, DBoW2::BowVector> bow_vectors;
   lcd::loadBowVectors(bow_json, bow_vectors);
-  ROS_INFO_STREAM("Loaded " << bow_vectors.size() << " BoW vectors.");
+  LOG(INFO) << "Loaded " << bow_vectors.size() << " BoW vectors.";
   bow_latest_[robot_id] = 0;
   bow_received_[robot_id] = std::unordered_set<lcd::PoseId>();
   for (const auto& id_bow : bow_vectors) {
@@ -968,10 +968,10 @@ void DistributedLoopClosure::loadBowVectors(size_t robot_id,
 
 void DistributedLoopClosure::loadVLCFrames(size_t robot_id,
                                            const std::string& vlc_json) {
-  ROS_INFO_STREAM("Loading VLC frames from " << vlc_json);
+  LOG(INFO) << "Loading VLC frames from " << vlc_json;
   std::map<lcd::PoseId, lcd::VLCFrame> vlc_frames;
   lcd::loadVLCFrames(vlc_json, vlc_frames);
-  ROS_INFO_STREAM("Loaded " << vlc_frames.size() << " VLC frames.");
+  LOG(INFO) << "Loaded " << vlc_frames.size() << " VLC frames.";
 
   for (const auto& id_vlc : vlc_frames) {
     lcd::RobotPoseId id(robot_id, id_vlc.first);
@@ -1021,7 +1021,7 @@ void DistributedLoopClosure::closeLogFiles() {
 void DistributedLoopClosure::logLcdStat() {
   if (lcd_log_file_.is_open()) {
     // auto elapsed_sec = (ros::Time::now() - start_time_).toSec();
-    lcd_log_file_ << ros::Time::now().toNSec() << ",";
+    lcd_log_file_ << rclcpp::Clock().now().nanoseconds() << ",";
     lcd_log_file_ << lcd_->totalBoWMatches() << ",";
     lcd_log_file_ << lcd_->getNumGeomVerificationsMono() << ",";
     lcd_log_file_ << lcd_->getNumGeomVerifications() << ",";
@@ -1095,7 +1095,7 @@ void DistributedLoopClosure::loadOdometryFromFile(const std::string& pose_file) 
   std::ifstream infile(pose_file);
   if (!infile.is_open()) {
     LOG(ERROR) << "Could not open specified file!";
-    ros::shutdown();
+    rclcpp::shutdown();
   }
 
   size_t num_poses_read = 0;
@@ -1161,7 +1161,7 @@ void DistributedLoopClosure::loadLoopClosuresFromFile(const std::string& lc_file
   std::ifstream infile(lc_file);
   if (!infile.is_open()) {
     LOG(ERROR) << "Could not open specified file!";
-    ros::shutdown();
+    rclcpp::shutdown();
   }
   size_t num_measurements_read = 0;
 
@@ -1253,8 +1253,8 @@ void DistributedLoopClosure::processOfflineLoopClosures() {
             *boost::dynamic_pointer_cast<gtsam::BetweenFactor<gtsam::Pose3>>(factor);
         submap_loop_closures_ids_.emplace(submap_edge_id);
         // Extract relative transformation between submaps
-        gtsam::Pose3 T_s1_f1 = RosPoseToGtsam(msg_from.T_submap_pose);
-        gtsam::Pose3 T_s2_f2 = RosPoseToGtsam(msg_to.T_submap_pose);
+        gtsam::Pose3 T_s1_f1 = RosPoseToGtsam(msg_from.submap_from_pose);
+        gtsam::Pose3 T_s2_f2 = RosPoseToGtsam(msg_to.submap_from_pose);
         gtsam::Pose3 T_f1_f2 = factor_pose3.measured();
         gtsam::Pose3 T_s1_s2 = T_s1_f1 * T_f1_f2 * (T_s2_f2.inverse());
         // Add new loop to queue for synchronization with other robots

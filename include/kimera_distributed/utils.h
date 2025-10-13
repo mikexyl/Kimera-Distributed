@@ -6,17 +6,17 @@
 
 #pragma once
 
-#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/msg/pose.hpp>
 #include <gtsam/geometry/Pose3.h>
 #include <gtsam/inference/Symbol.h>
 #include <gtsam/nonlinear/NonlinearFactor.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <gtsam/nonlinear/Values.h>
 #include <gtsam/slam/BetweenFactor.h>
-#include <nav_msgs/Path.h>
-#include <geometry_msgs/Transform.h>
-#include <pose_graph_tools_msgs/PoseGraph.h>
-#include <ros/console.h>
+#include <nav_msgs/msg/path.hpp>
+#include <geometry_msgs/msg/transform.hpp>
+#include <pose_graph_tools_msgs/msg/pose_graph.hpp>
+#include <rclcpp/rclcpp.hpp>
 #include <string>
 
 namespace kimera_distributed {
@@ -47,18 +47,18 @@ const std::map<char, uint32_t> robot_prefix_to_id = {
     {'j', 9}
 };
 
-gtsam::Pose3 RosPoseToGtsam(const geometry_msgs::Pose& transform);
-geometry_msgs::Pose GtsamPoseToRos(const gtsam::Pose3& transform);
-void GtsamPoseToRosTf(const gtsam::Pose3& pose, geometry_msgs::Transform* tf);
+gtsam::Pose3 RosPoseToGtsam(const geometry_msgs::msg::Pose& transform);
+geometry_msgs::msg::Pose GtsamPoseToRos(const gtsam::Pose3& transform);
+void GtsamPoseToRosTf(const gtsam::Pose3& pose, geometry_msgs::msg::Transform* tf);
 
 // Convert gtsam posegaph to PoseGraph msg
-pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(
+pose_graph_tools_msgs::msg::PoseGraph GtsamGraphToRos(
     const gtsam::NonlinearFactorGraph& factors,
     const gtsam::Values& values,
     const gtsam::Vector& gnc_weights = Eigen::VectorXd::Zero(0));
 
 // Convert vector of gtsam poses to path msg
-nav_msgs::Path GtsamPoseTrajectoryToPath(const std::vector<gtsam::Pose3>& gtsam_poses);
+nav_msgs::msg::Path GtsamPoseTrajectoryToPath(const std::vector<gtsam::Pose3>& gtsam_poses);
 
 /**
  * @brief Check if the input factor graph contains a Pose3 between factor with

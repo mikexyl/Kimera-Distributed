@@ -7,19 +7,20 @@
 #pragma once
 
 #include <kimera_multi_lcd/loop_closure_detector.h>
-#include <pose_graph_tools_msgs/BowQueries.h>
-#include <pose_graph_tools_msgs/BowRequests.h>
-#include <pose_graph_tools_msgs/LoopClosures.h>
-#include <pose_graph_tools_msgs/LoopClosuresAck.h>
-#include <pose_graph_tools_msgs/PoseGraph.h>
-#include <pose_graph_tools_msgs/PoseGraphQuery.h>
-#include <pose_graph_tools_msgs/VLCFrames.h>
-#include <pose_graph_tools_msgs/VLCRequests.h>
 
 #include <iostream>
 #include <map>
 #include <memory>
 #include <mutex>
+#include <nav_msgs/msg/path.hpp>
+#include <pose_graph_tools_msgs/msg/bow_queries.hpp>
+#include <pose_graph_tools_msgs/msg/bow_requests.hpp>
+#include <pose_graph_tools_msgs/msg/loop_closures.hpp>
+#include <pose_graph_tools_msgs/msg/loop_closures_ack.hpp>
+#include <pose_graph_tools_msgs/msg/pose_graph.hpp>
+// #include <pose_graph_tools_msgs/msg/po
+#include <pose_graph_tools_msgs/msg/vlc_frames.hpp>
+#include <pose_graph_tools_msgs/msg/vlc_requests.hpp>
 #include <queue>
 #include <thread>
 #include <vector>
@@ -55,7 +56,7 @@ class DistributedLoopClosure {
   std::unordered_map<lcd::RobotId, lcd::PoseId>
       bow_latest_;  // Latest BoW received from each robot
   std::unordered_map<lcd::RobotId, std::unordered_set<lcd::PoseId>> bow_received_;
-  std::vector<pose_graph_tools_msgs::BowQuery>
+  std::vector<pose_graph_tools_msgs::msg::BowQuery>
       bow_msgs_;  // New BoW messages that need to be processed
   std::mutex bow_msgs_mutex_;
 
@@ -75,7 +76,8 @@ class DistributedLoopClosure {
 
   // Data structures for offline mode
   gtsam::NonlinearFactorGraph offline_keyframe_loop_closures_;
-  std::map<lcd::RobotPoseId, pose_graph_tools_msgs::VLCFrameMsg> offline_robot_pose_msg_;
+  std::map<lcd::RobotPoseId, pose_graph_tools_msgs::msg::VLCFrameMsg>
+      offline_robot_pose_msg_;
 
   // List of potential loop closures
   // that require to request VLC frames
@@ -141,24 +143,25 @@ class DistributedLoopClosure {
   /**
    * Callback to process bag of word vectors received from robots
    */
-  void processBow(const pose_graph_tools_msgs::BowQueriesConstPtr& query_msg);
+  void processBow(const pose_graph_tools_msgs::msg::BowQueries::SharedPtr query_msg);
 
   /**
    * @brief Subscribe to incremental pose graph of this robot published by VIO
    * @param msg
    */
-  bool processLocalPoseGraph(const pose_graph_tools_msgs::PoseGraph::ConstPtr& msg);
+  bool processLocalPoseGraph(
+      const pose_graph_tools_msgs::msg::PoseGraph::SharedPtr msg);
 
   /**
    * Callback to process internal VLC frames
    */
-  void processInternalVLC(const pose_graph_tools_msgs::VLCFramesConstPtr& msg);
+  void processInternalVLC(const pose_graph_tools_msgs::msg::VLCFrames::SharedPtr msg);
 
   /**
    * @brief Callback to receive optimized submap poses from dpgo
    * @param msg
    */
-  void processOptimizedPath(const nav_msgs::PathConstPtr& msg);
+  void processOptimizedPath(const nav_msgs::msg::Path::SharedPtr msg);
 
   /**
    * @brief Detect loop closure using BoW vectors
@@ -206,7 +209,7 @@ class DistributedLoopClosure {
   /**
    * Get sparse pose graph
    */
-  pose_graph_tools_msgs::PoseGraph getSubmapPoseGraph(bool incremental = false);
+  pose_graph_tools_msgs::msg::PoseGraph getSubmapPoseGraph(bool incremental = false);
 
   /**
    * Update the candidate list and verification queue

@@ -6,12 +6,12 @@
 #include <glog/logging.h>
 #include <gtsam/linear/NoiseModel.h>
 #include <kimera_distributed/utils.h>
-#include <ros/console.h>
+#include <rclcpp/rclcpp.hpp>
 #include <cassert>
 
 namespace kimera_distributed {
 
-gtsam::Pose3 RosPoseToGtsam(const geometry_msgs::Pose& transform) {
+gtsam::Pose3 RosPoseToGtsam(const geometry_msgs::msg::Pose& transform) {
   gtsam::Pose3 pose;
   pose = gtsam::Pose3(
       gtsam::Rot3(transform.orientation.w,
@@ -22,8 +22,8 @@ gtsam::Pose3 RosPoseToGtsam(const geometry_msgs::Pose& transform) {
   return pose;
 }
 
-geometry_msgs::Pose GtsamPoseToRos(const gtsam::Pose3& transform) {
-  geometry_msgs::Pose pose;
+geometry_msgs::msg::Pose GtsamPoseToRos(const gtsam::Pose3& transform) {
+  geometry_msgs::msg::Pose pose;
 
   const gtsam::Point3& position = transform.translation();
   const gtsam::Quaternion& orientation = transform.rotation().toQuaternion();
@@ -40,7 +40,7 @@ geometry_msgs::Pose GtsamPoseToRos(const gtsam::Pose3& transform) {
   return pose;
 }
 
-void GtsamPoseToRosTf(const gtsam::Pose3& pose, geometry_msgs::Transform* tf) {
+void GtsamPoseToRosTf(const gtsam::Pose3& pose, geometry_msgs::msg::Transform* tf) {
   CHECK_NOTNULL(tf);
   tf->translation.x = pose.x();
   tf->translation.y = pose.y();
@@ -53,14 +53,20 @@ void GtsamPoseToRosTf(const gtsam::Pose3& pose, geometry_msgs::Transform* tf) {
 }
 
 // Convert gtsam posegaph to PoseGraph msg
-pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGraph& factors,
+pose_graph_tools_msgs::msg::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGraph& factors,
                                             const gtsam::Values& values,
                                             const gtsam::Vector& gnc_weights) {
-  std::vector<pose_graph_tools_msgs::PoseGraphEdge> edges;
+  std::vector<pose_graph_tools_msgs::msg::PoseGraphEdge> edges;
   size_t single_robot_lcs = 0;
   size_t inter_robot_lcs = 0;
   size_t single_robot_inliers = 0;
   size_t inter_robot_inliers = 0;
+  
+  // Suppress unused variable warnings for statistics
+  (void)single_robot_lcs;
+  (void)inter_robot_lcs;
+  (void)single_robot_inliers;
+  (void)inter_robot_inliers;
   // first store the factors as edges
   for (size_t i = 0; i < factors.size(); i++) {
     // check if between factor
@@ -69,7 +75,7 @@ pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGra
       const gtsam::BetweenFactor<gtsam::Pose3>& factor =
           *boost::dynamic_pointer_cast<gtsam::BetweenFactor<gtsam::Pose3>>(factors[i]);
       // convert between factor to PoseGraphEdge type
-      pose_graph_tools_msgs::PoseGraphEdge edge;
+      pose_graph_tools_msgs::msg::PoseGraphEdge edge;
       gtsam::Symbol front(factor.front());
       gtsam::Symbol back(factor.back());
       edge.key_from = front.index();
@@ -79,17 +85,17 @@ pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGra
 
       if (edge.key_to == edge.key_from + 1 &&
           edge.robot_from == edge.robot_to) {  // check if odom
-        edge.type = pose_graph_tools_msgs::PoseGraphEdge::ODOM;
+        edge.type = pose_graph_tools_msgs::msg::PoseGraphEdge::ODOM;
 
       } else {
-        edge.type = pose_graph_tools_msgs::PoseGraphEdge::LOOPCLOSE;
+        edge.type = pose_graph_tools_msgs::msg::PoseGraphEdge::LOOPCLOSE;
         if (edge.robot_from == edge.robot_to) {
           single_robot_lcs++;
         } else {
           inter_robot_lcs++;
         }
-        if (gnc_weights.size() == factors.size() && gnc_weights(i) < 0.5) {
-          edge.type = pose_graph_tools_msgs::PoseGraphEdge::REJECTED_LOOPCLOSE;
+        if (static_cast<size_t>(gnc_weights.size()) == factors.size() && gnc_weights(i) < 0.5) {
+          edge.type = pose_graph_tools_msgs::msg::PoseGraphEdge::REJECTED_LOOPCLOSE;
         } else {
           if (edge.robot_from == edge.robot_to) {
             single_robot_inliers++;
@@ -114,7 +120,7 @@ pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGra
     }
   }
 
-  std::vector<pose_graph_tools_msgs::PoseGraphNode> nodes;
+  std::vector<pose_graph_tools_msgs::msg::PoseGraphNode> nodes;
   // Then store the values as nodes
   gtsam::KeyVector key_list = values.keys();
   for (size_t i = 0; i < key_list.size(); i++) {
@@ -122,12 +128,10 @@ pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGra
     try {
       size_t robot_id = robot_prefix_to_id.at(node_symb.chr());
 
-      pose_graph_tools_msgs::PoseGraphNode node;
+      pose_graph_tools_msgs::msg::PoseGraphNode node;
       node.key = node_symb.index();
       node.robot_id = robot_id;
       const gtsam::Pose3& value = values.at<gtsam::Pose3>(key_list[i]);
-      const gtsam::Point3& translation = value.translation();
-      const gtsam::Quaternion& quaternion = value.rotation().toQuaternion();
 
       node.pose = GtsamPoseToRos(value);
       nodes.push_back(node);
@@ -136,7 +140,7 @@ pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGra
     }
   }
 
-  pose_graph_tools_msgs::PoseGraph posegraph;
+  pose_graph_tools_msgs::msg::PoseGraph posegraph;
   posegraph.nodes = nodes;
   posegraph.edges = edges;
   // ROS_INFO(
@@ -149,12 +153,12 @@ pose_graph_tools_msgs::PoseGraph GtsamGraphToRos(const gtsam::NonlinearFactorGra
   return posegraph;
 }
 
-nav_msgs::Path GtsamPoseTrajectoryToPath(const std::vector<gtsam::Pose3>& gtsam_poses) {
-  nav_msgs::Path msg;
+nav_msgs::msg::Path GtsamPoseTrajectoryToPath(const std::vector<gtsam::Pose3>& gtsam_poses) {
+  nav_msgs::msg::Path msg;
   msg.header.frame_id = "/world";
-  msg.header.stamp = ros::Time::now();
+  msg.header.stamp = rclcpp::Time(0);  // Use rclcpp::Clock for actual time if needed
   for (size_t i = 0; i < gtsam_poses.size(); i++) {
-    geometry_msgs::PoseStamped pose_stamped;
+    geometry_msgs::msg::PoseStamped pose_stamped;
     pose_stamped.pose = GtsamPoseToRos(gtsam_poses[i]);
     msg.poses.push_back(pose_stamped);
   }
