@@ -6,20 +6,7 @@
 
 #pragma once
 
-#include <ros/ros.h>
-#include <ros/time.h>
-
-#include <iostream>
-#include <map>
-#include <memory>
-#include <mutex>
-#include <queue>
-#include <thread>
-#include <vector>
-
-#include "kimera_distributed/DistributedLoopClosure.h"
-#include "kimera_distributed/utils.h"
-
+#include <aria_viz/visualizer_rerun.h>
 #include <pose_graph_tools_msgs/BowQueries.h>
 #include <pose_graph_tools_msgs/BowRequests.h>
 #include <pose_graph_tools_msgs/LoopClosures.h>
@@ -28,9 +15,19 @@
 #include <pose_graph_tools_msgs/PoseGraphQuery.h>
 #include <pose_graph_tools_msgs/VLCFrames.h>
 #include <pose_graph_tools_msgs/VLCRequests.h>
+#include <ros/ros.h>
+#include <ros/time.h>
 #include <std_msgs/UInt16MultiArray.h>
-
 #include <tf/transform_broadcaster.h>
+
+#include <vector>
+
+#include "kimera_distributed/DistributedLoopClosure.h"
+#include "kimera_distributed/RerunVisualizer.h"
+
+namespace aria::viz {
+class VisualizerRerun;
+}
 
 namespace lcd = kimera_multi_lcd;
 
@@ -42,6 +39,8 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ~DistributedLoopClosureRos();
 
  private:
+  std::unique_ptr<RerunVisualizer> rerun_visualizer_;
+
   ros::NodeHandle nh_;
   std::atomic<bool> should_shutdown_{false};
 
@@ -87,7 +86,6 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   std::string latest_kf_frame_id_;
   std::string odom_frame_id_;
   std::string world_frame_id_;
-  
 
   /**
    * @brief Run place recognition / loop detection spin
@@ -191,8 +189,9 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
    * @param response
    * @return
    */
-  bool requestPoseGraphCallback(pose_graph_tools_msgs::PoseGraphQuery::Request& request,
-                                pose_graph_tools_msgs::PoseGraphQuery::Response& response);
+  bool requestPoseGraphCallback(
+      pose_graph_tools_msgs::PoseGraphQuery::Request& request,
+      pose_graph_tools_msgs::PoseGraphQuery::Response& response);
 
   /**
    * Initialize loop closures
@@ -257,7 +256,7 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
    * @brief Publish TF between world and odom
    */
   void publishOdomToWorld();
-  
+
   /**
    * @brief Publish TF between world and latest keyframe
    */

@@ -1,2 +1,5 @@
 .vscode
 *.tex
+
+.cache
+compile_commands.json

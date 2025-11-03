@@ -19,13 +19,12 @@
 #include <fstream>
 #include <iostream>
 #include <memory>
-#include <random>
 #include <string>
 
 namespace kimera_distributed {
 
 DistributedLoopClosure::DistributedLoopClosure()
-    : lcd_(new lcd::LoopClosureDetector),
+    : lcd_(new lcd::VLADLoopClosureDetector),
       num_inter_robot_loops_(0),
       backend_update_count_(0),
       last_get_submap_idx_(0),
@@ -457,7 +456,7 @@ bool DistributedLoopClosure::queryBowVectorsPublish(lcd::RobotId& selected_robot
     it = requested_bows_from_robot.erase(
         it);  // remove the current ID and proceed to next one
     lcd::RobotPoseId requested_robot_pose_id(config_.my_id_, pose_id);
-    if (!lcd_->bowExists(requested_robot_pose_id)) {
+    if (!lcd_->globalDescExists(requested_robot_pose_id)) {
       LOG(ERROR) << "Requested BoW of frame " << pose_id << " does not exist!";
       continue;
     }
@@ -571,17 +570,17 @@ void DistributedLoopClosure::detectLoopSpin() {
     lcd::RobotId query_robot = msg.robot_id;
     lcd::PoseId query_pose = msg.pose_id;
     lcd::RobotPoseId query_vertex(query_robot, query_pose);
-    DBoW2::BowVector bow_vec;
-    kimera_multi_lcd::BowVectorFromMsg(msg.bow_vector, &bow_vec);
+    kimera_multi_lcd::VLADLoopClosureDetector::GlobalDesc global_desc;
+    kimera_multi_lcd::MatFromBowVectorMsg(msg.bow_vector, &global_desc);
 
     if (query_pose <= 2 * config_.bow_skip_num_) {
       // We cannot detect loop for the very first few frames
       // Remove and proceed to next message
       LOG(INFO) << "Received initial BoW from robot " << query_robot << " (pose "
                 << query_pose << ").";
-      lcd_->addBowVector(query_vertex, bow_vec);
+      lcd_->addGlobalDesc(query_vertex, global_desc);
       it = bow_msgs_.erase(it);
-    } else if (!lcd_->findPreviousBoWVector(query_vertex)) {
+    } else if (!lcd_->findPreviousGlobalDesc(query_vertex)) {
       // We cannot detect loop since the BoW of previous frame is missing
       // (Recall we need that to compute nss factor)
       // In this case we skip the message and try again later
@@ -591,14 +590,14 @@ void DistributedLoopClosure::detectLoopSpin() {
     } else {
       // We are ready to detect loop for this query message
       // ROS_INFO("Detect loop for (%zu,%zu).", query_robot, query_pose);
-      detectLoop(query_vertex, bow_vec);
+      detectLoop(query_vertex, global_desc);
       num_detection_performed++;
       // Inter-robot queries will count as communication payloads
       if (query_robot != config_.my_id_) {
         received_bow_bytes_.push_back(
             kimera_multi_lcd::computeBowQueryPayloadBytes(msg));
       }
-      lcd_->addBowVector(query_vertex, bow_vec);
+      lcd_->addGlobalDesc(query_vertex, global_desc);
       it = bow_msgs_.erase(it);  // Erase this message and move on to next one
     }
   }
@@ -608,8 +607,9 @@ void DistributedLoopClosure::detectLoopSpin() {
   //}
 }
 
-void DistributedLoopClosure::detectLoop(const lcd::RobotPoseId& vertex_query,
-                                        const DBoW2::BowVector& bow_vec) {
+void DistributedLoopClosure::detectLoop(
+    const lcd::RobotPoseId& vertex_query,
+    const lcd::VLADLoopClosureDetector::GlobalDesc& bow_vec) {
   const lcd::RobotId robot_query = vertex_query.first;
   const lcd::PoseId pose_query = vertex_query.second;
   std::vector<lcd::RobotPoseId> vertex_matches;
@@ -621,6 +621,7 @@ void DistributedLoopClosure::detectLoop(const lcd::RobotPoseId& vertex_query,
     // Detect loop closures with all robots in the database
     // (including myself if inter_robot_only is set to false)
     if (robot_query == config_.my_id_) {
+      LOG(INFO) << "Detect loop for my own bow vector: " << pose_query;
       if (lcd_->detectLoop(vertex_query, bow_vec, &vertex_matches, &match_scores)) {
         for (size_t i = 0; i < vertex_matches.size(); ++i) {
           lcd::PotentialVLCEdge potential_edge(
@@ -937,7 +938,7 @@ void DistributedLoopClosure::saveBowVectors(const std::string& filepath) const {
                                   std::to_string(robot_pose_id.first) +
                                   "_bow_vectors.json";
     LOG(INFO) << "Saving loop closure BoWs to " << bow_vector_save;
-    lcd::saveBowVectors(lcd_->getBoWVectors(robot_pose_id.first), bow_vector_save);
+    lcd::saveGlobalDescMat(lcd_->getGlobalDescs(robot_pose_id.first), bow_vector_save);
   }
 }
 
@@ -953,14 +954,14 @@ void DistributedLoopClosure::saveVLCFrames(const std::string& filepath) const {
 void DistributedLoopClosure::loadBowVectors(size_t robot_id,
                                             const std::string& bow_json) {
   ROS_INFO_STREAM("Loading BoW vectors from " << bow_json);
-  std::map<lcd::PoseId, DBoW2::BowVector> bow_vectors;
-  lcd::loadBowVectors(bow_json, bow_vectors);
+  std::map<lcd::PoseId, lcd::VLADLoopClosureDetector::GlobalDesc> bow_vectors;
+  lcd::loadGlobalDesc(bow_json, bow_vectors);
   ROS_INFO_STREAM("Loaded " << bow_vectors.size() << " BoW vectors.");
   bow_latest_[robot_id] = 0;
   bow_received_[robot_id] = std::unordered_set<lcd::PoseId>();
   for (const auto& id_bow : bow_vectors) {
     lcd::RobotPoseId id(robot_id, id_bow.first);
-    lcd_->addBowVector(id, id_bow.second);
+    lcd_->addGlobalDesc(id, id_bow.second);
     bow_latest_[robot_id] = id_bow.first;
     bow_received_[robot_id].insert(id_bow.first);
   }
@@ -1022,7 +1023,7 @@ void DistributedLoopClosure::logLcdStat() {
   if (lcd_log_file_.is_open()) {
     // auto elapsed_sec = (ros::Time::now() - start_time_).toSec();
     lcd_log_file_ << ros::Time::now().toNSec() << ",";
-    lcd_log_file_ << lcd_->totalBoWMatches() << ",";
+    lcd_log_file_ << lcd_->totalGlobalDescMatches() << ",";
     lcd_log_file_ << lcd_->getNumGeomVerificationsMono() << ",";
     lcd_log_file_ << lcd_->getNumGeomVerifications() << ",";
     lcd_log_file_ << keyframe_loop_closures_.size() << ",";

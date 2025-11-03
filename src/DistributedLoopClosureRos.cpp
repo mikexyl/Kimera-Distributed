@@ -5,7 +5,6 @@
  */
 
 #include "kimera_distributed/DistributedLoopClosureRos.h"
-#include "kimera_distributed/configs.h"
 
 #include <DBoW2/DBoW2.h>
 #include <glog/logging.h>
@@ -23,6 +22,8 @@
 #include <memory>
 #include <random>
 #include <string>
+
+#include "kimera_distributed/configs.h"
 
 namespace kimera_distributed {
 
@@ -84,6 +85,14 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   ros::param::get("~detect_interrobot_only", config.lcd_params_.inter_robot_only_);
 
   ros::param::get("~vocabulary_path", config.lcd_params_.vocab_path_);
+  ros::param::get("~lcd_lg_num_features", config.lcd_params_.lcd_lg_num_features_);
+  ros::param::get("~lcd_faiss_index_path", config.lcd_params_.lcd_faiss_index_path_);
+  ros::param::get("~xfeat_nv_head_model_path",
+                  config.lcd_params_.xfeat_nv_head_model_path_);
+  ros::param::get("~netvlad_model_path", config.lcd_params_.netvlad_model_path_);
+  ros::param::get("~lcd_lg_model_path", config.lcd_params_.lcd_lg_model_path_);
+  ros::param::get("~lcd_min_matched_features",
+                  config.lcd_params_.lcd_min_matched_features_);
 
   ros::param::get("~detection_batch_size", config.detection_batch_size_);
   ros::param::get("~bow_skip_num", config.bow_skip_num_);
@@ -114,6 +123,13 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
     ros::param::get("~robot" + std::to_string(id) + "_name", robot_name);
     config.robot_names_[id] = robot_name;
   }
+
+  CHECK(config.robot_names_.find(config.my_id_) != config.robot_names_.end())
+      << "Robot name for robot ID " << config.my_id_ << " not found! have "
+      << config.robot_names_.size() << " names loaded.";
+
+  rerun_visualizer_ = std::make_unique<RerunVisualizer>(
+      config.robot_names_.at(config.my_id_), odom_frame_id_, world_frame_id_);
 
   ros::param::get("~max_submap_size", config.submap_params_.max_submap_size);
   ros::param::get("~max_submap_distance", config.submap_params_.max_submap_distance);
@@ -218,11 +234,13 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
 
   std::string resp_topic =
       "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/vlc_responses";
-  vlc_responses_pub_ = nh_.advertise<pose_graph_tools_msgs::VLCFrames>(resp_topic, 10, true);
+  vlc_responses_pub_ =
+      nh_.advertise<pose_graph_tools_msgs::VLCFrames>(resp_topic, 10, true);
 
   std::string req_topic =
       "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/vlc_requests";
-  vlc_requests_pub_ = nh_.advertise<pose_graph_tools_msgs::VLCRequests>(req_topic, 10, true);
+  vlc_requests_pub_ =
+      nh_.advertise<pose_graph_tools_msgs::VLCRequests>(req_topic, 10, true);
 
   std::string loop_topic =
       "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/loop_closures";
@@ -351,7 +369,8 @@ void DistributedLoopClosureRos::localPoseGraphCallback(
   bool incremental_pub = processLocalPoseGraph(msg);
 
   // Publish sparsified pose graph
-  pose_graph_tools_msgs::PoseGraph sparse_pose_graph = getSubmapPoseGraph(incremental_pub);
+  pose_graph_tools_msgs::PoseGraph sparse_pose_graph =
+      getSubmapPoseGraph(incremental_pub);
   if (!sparse_pose_graph.edges.empty() || !sparse_pose_graph.nodes.empty()) {
     pose_graph_pub_.publish(sparse_pose_graph);
   }
@@ -452,7 +471,6 @@ void DistributedLoopClosureRos::publishOdomToWorld() {
   const gtsam::Pose3 T_world_odom = getOdomInWorldFrame();
   GtsamPoseToRosTf(T_world_odom, &tf_world_odom.transform);
   tf_broadcaster_.sendTransform(tf_world_odom);
-  
 }
 
 void DistributedLoopClosureRos::publishLatestKFToWorld() {
@@ -586,8 +604,8 @@ void DistributedLoopClosureRos::publishBowVectors() {
     pose_graph_tools_msgs::BowQuery query_msg;
     query_msg.robot_id = robot_pose_id.first;
     query_msg.pose_id = robot_pose_id.second;
-    kimera_multi_lcd::BowVectorToMsg(lcd_->getBoWVector(robot_pose_id),
-                                     &(query_msg.bow_vector));
+    kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(robot_pose_id),
+                                        &(query_msg.bow_vector));
     msg.queries.push_back(query_msg);
   }
   bow_response_pub_.publish(msg);
@@ -598,14 +616,14 @@ void DistributedLoopClosureRos::publishBowVectors() {
 }
 
 void DistributedLoopClosureRos::publishLatestBowVector() {
-  int pose_id = lcd_->latestPoseIdWithBoW(config_.my_id_);
+  int pose_id = lcd_->latestPoseIdWithGlobalDesc(config_.my_id_);
   if (pose_id != -1) {
     lcd::RobotPoseId latest_id(config_.my_id_, pose_id);
     pose_graph_tools_msgs::BowQuery query_msg;
     query_msg.robot_id = config_.my_id_;
     query_msg.pose_id = pose_id;
-    kimera_multi_lcd::BowVectorToMsg(lcd_->getBoWVector(latest_id),
-                                     &(query_msg.bow_vector));
+    kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(latest_id),
+                                        &(query_msg.bow_vector));
 
     pose_graph_tools_msgs::BowQueries msg;
     msg.queries.push_back(query_msg);

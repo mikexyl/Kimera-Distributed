@@ -22,8 +22,8 @@
   <arg name="detection_batch_size" default="30" />
   <!-- Debug -->
   <arg name="debug"              default="false" />
-  <arg name="launch_prefix"      value="xterm -e gdb -ex run \-\-args" if="$(arg debug)"/>
-  <arg name="launch_prefix"      value=""    unless="$(arg debug)"/>
+  <arg name="launch_prefix"      value="kitty -e gdb -ex run \-\-args" if="$(arg debug)"/>
+  <arg name="launch_prefix"      value="kitty --hold -e"    unless="$(arg debug)"/>
   <!-- Run offline -->
   <arg name="run_offline"          default="false" />
   <arg name="offline_dir"          default=""/>
@@ -35,7 +35,7 @@
   <arg name="log_output_path"      default="$(find kimera_distributed)/logs/kimera$(arg robot_id)/"/>
 
   <!-- Launch Kimera Distributed Loop Closure Node -->
-  <node launch-prefix="$(arg launch_prefix)" name="distributed_loop_closure_node" pkg="kimera_distributed" type="kimera_distributed_loop_closure_node" output="screen" ns="distributed_loop_closure">
+  <node launch-prefix="$(arg launch_prefix)" name="distributed_loop_closure_node" pkg="kimera_distributed" type="kimera_distributed_loop_closure_node" output="screen" ns="distributed_loop_closure" >
     <param name="robot_id"               value="$(arg robot_id)"/>
     <param name="num_robots"             value="$(arg num_robots)" />
     <param name="frame_id"               value="$(arg frame_id)" />

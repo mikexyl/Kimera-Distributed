@@ -3,6 +3,10 @@ project(kimera_distributed)
 
 SET(CMAKE_BUILD_TYPE Release)
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
+
 find_package(catkin_simple REQUIRED)
 
 find_package(Boost REQUIRED
@@ -17,7 +21,10 @@ find_package(Boost REQUIRED
 )
 
 find_package(GTSAM REQUIRED)
+find_package(xfeat-cpp REQUIRED)
+find_package(aria_viz REQUIRED)
 find_package(DBoW2 REQUIRED)
+find_package(opengv REQUIRED)
 if(NOT TARGET DBoW2::DBoW2)
   add_library(DBoW2::DBoW2 INTERFACE IMPORTED)
   set_target_properties(DBoW2::DBoW2 PROPERTIES
@@ -34,6 +41,7 @@ cs_add_library(${PROJECT_NAME}
   src/DistributedLoopClosure.cpp
   src/DistributedLoopClosureRos.cpp
   src/utils.cpp
+  src/RerunVisualizer.cpp
 )
 
 target_link_libraries(${PROJECT_NAME}
@@ -42,6 +50,9 @@ target_link_libraries(${PROJECT_NAME}
   ${OpenCV_LIBRARIES}
   gtsam
   DBoW2::DBoW2
+  xfeat-cpp::xfeat-cpp
+  opengv
+  aria_viz
 )
 
 cs_add_executable(kimera_distributed_loop_closure_node

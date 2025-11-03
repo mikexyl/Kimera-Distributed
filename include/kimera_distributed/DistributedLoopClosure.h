@@ -7,6 +7,7 @@
 #pragma once
 
 #include <kimera_multi_lcd/loop_closure_detector.h>
+#include <kimera_multi_lcd/vlad_loop_closure_detector.h>
 #include <pose_graph_tools_msgs/BowQueries.h>
 #include <pose_graph_tools_msgs/BowRequests.h>
 #include <pose_graph_tools_msgs/LoopClosures.h>
@@ -60,7 +61,7 @@ class DistributedLoopClosure {
   std::mutex bow_msgs_mutex_;
 
   // Loop closure detector
-  std::shared_ptr<lcd::LoopClosureDetector> lcd_;
+  std::shared_ptr<lcd::VLADLoopClosureDetector> lcd_;
   std::mutex lcd_mutex_;
 
   // Loop closures
@@ -75,7 +76,8 @@ class DistributedLoopClosure {
 
   // Data structures for offline mode
   gtsam::NonlinearFactorGraph offline_keyframe_loop_closures_;
-  std::map<lcd::RobotPoseId, pose_graph_tools_msgs::VLCFrameMsg> offline_robot_pose_msg_;
+  std::map<lcd::RobotPoseId, pose_graph_tools_msgs::VLCFrameMsg>
+      offline_robot_pose_msg_;
 
   // List of potential loop closures
   // that require to request VLC frames
@@ -171,7 +173,7 @@ class DistributedLoopClosure {
    * @param bow_vec query bag of words vector
    */
   void detectLoop(const lcd::RobotPoseId& vertex_query,
-                  const DBoW2::BowVector& bow_vec);
+                  const lcd::VLADLoopClosureDetector::GlobalDesc& bow_vec);
 
   /**
    * Perform geometric verification

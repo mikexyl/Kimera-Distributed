@@ -1,0 +1,36 @@
+# Yaml configuration for visual loop closure parameters 
+
+detect_interrobot_only: true
+
+# Matcher parameters (DBoW2)
+# alpha: 0.5
+dist_local: 90
+max_db_results: 2
+min_nss_factor: 0.05 
+lowe_ratio:  0.8
+min_temporal_matches: 3
+min_matches_per_island: 1
+max_intraisland_gap: 3
+max_nrFrames_between_islands: 3
+max_nrFrames_between_queries: 2
+
+# Mono RANSAC 
+ransac_threshold_mono: 0.00001
+ransac_inlier_percentage_mono: 0.01
+max_ransac_iterations_mono: 1000
+
+# Stereo RANSAC
+max_ransac_iterations: 1000
+ransac_threshold: 0.3
+geometric_verification_min_inlier_count: 5
+geometric_verification_min_inlier_percentage: 0.0
+
+lcd_lg_num_features: 500
+lcd_lg_model_path: /workspaces/src/xfeat-cpp/onnx_model/lg_640x480_dyn.onnx
+lcd_faiss_index_path: /workspaces/src/xfeat-cpp/onnx_model/faiss_ivfflat_pca4096.index.bin
+xfeat_nv_head_model_path: /workspaces/src/xfeat-cpp/onnx_model/xfeat_nv.onnx
+netvlad_model_path: /workspaces/src/xfeat-cpp/onnx_model/netvlad.onnx
+
+local_window_size: 10
+
+lcd_min_matched_features: 30
