@@ -12,7 +12,7 @@
   <!-- Dataset -->
   <arg name="dataset_name"   default="warty"/>
   <!-- Parameters that control communication due to VLC -->
-  <arg name="alpha"                default="0.5"/>
+  <arg name="alpha"                default="0.8"/>
   <arg name="bow_skip_num"         default="1"   />
   <arg name="bow_batch_size"       default="100" />
   <arg name="vlc_batch_size"       default="10"/>
@@ -23,7 +23,7 @@
   <!-- Debug -->
   <arg name="debug"              default="false" />
   <arg name="launch_prefix"      value="kitty -e gdb -ex run \-\-args" if="$(arg debug)"/>
-  <arg name="launch_prefix"      value="kitty --hold -e"    unless="$(arg debug)"/>
+  <arg name="launch_prefix"      value=""    unless="$(arg debug)"/>
   <!-- Run offline -->
   <arg name="run_offline"          default="false" />
   <arg name="offline_dir"          default=""/>
@@ -35,7 +35,7 @@
   <arg name="log_output_path"      default="$(find kimera_distributed)/logs/kimera$(arg robot_id)/"/>
 
   <!-- Launch Kimera Distributed Loop Closure Node -->
-  <node launch-prefix="$(arg launch_prefix)" name="distributed_loop_closure_node" pkg="kimera_distributed" type="kimera_distributed_loop_closure_node" output="screen" ns="distributed_loop_closure" >
+  <node launch-prefix="$(arg launch_prefix)" name="distributed_loop_closure_node" pkg="kimera_distributed" type="kimera_distributed_loop_closure_node" output="screen" ns="distributed_loop_closure" args="-v 1" >
     <param name="robot_id"               value="$(arg robot_id)"/>
     <param name="num_robots"             value="$(arg num_robots)" />
     <param name="frame_id"               value="$(arg frame_id)" />

@@ -114,7 +114,7 @@ void DistributedLoopClosure::processBow(
     bow_received_[robot_id].emplace(pose_id);
     {  // start of BoW critical section
       std::unique_lock<std::mutex> bow_lock(bow_msgs_mutex_);
-      bow_msgs_.push_back(msg);
+      bow_msgs_.push(msg);
     }  // end BoW critical section
   }
 }
@@ -559,14 +559,14 @@ void DistributedLoopClosure::queryFramesPublish(
 
 void DistributedLoopClosure::detectLoopSpin() {
   std::unique_lock<std::mutex> bow_lock(bow_msgs_mutex_);
-  auto it = bow_msgs_.begin();
   int num_detection_performed = 0;
 
   while (num_detection_performed < config_.detection_batch_size_) {
-    if (it == bow_msgs_.end()) {
+    if (bow_msgs_.empty()) {
       break;
     }
-    const pose_graph_tools_msgs::BowQuery msg = *it;
+    const pose_graph_tools_msgs::BowQuery msg = bow_msgs_.front();
+    bow_msgs_.pop();
     lcd::RobotId query_robot = msg.robot_id;
     lcd::PoseId query_pose = msg.pose_id;
     lcd::RobotPoseId query_vertex(query_robot, query_pose);
@@ -579,14 +579,12 @@ void DistributedLoopClosure::detectLoopSpin() {
       LOG(INFO) << "Received initial BoW from robot " << query_robot << " (pose "
                 << query_pose << ").";
       lcd_->addGlobalDesc(query_vertex, global_desc);
-      it = bow_msgs_.erase(it);
     } else if (!lcd_->findPreviousGlobalDesc(query_vertex)) {
       // We cannot detect loop since the BoW of previous frame is missing
       // (Recall we need that to compute nss factor)
       // In this case we skip the message and try again later
       // ROS_WARN("Cannot detect loop for (%zu,%zu) because previous BoW is missing.",
       //           query_robot, query_pose);
-      ++it;
     } else {
       // We are ready to detect loop for this query message
       // ROS_INFO("Detect loop for (%zu,%zu).", query_robot, query_pose);
@@ -598,7 +596,8 @@ void DistributedLoopClosure::detectLoopSpin() {
             kimera_multi_lcd::computeBowQueryPayloadBytes(msg));
       }
       lcd_->addGlobalDesc(query_vertex, global_desc);
-      it = bow_msgs_.erase(it);  // Erase this message and move on to next one
+      LOG(INFO) << "processed " << num_detection_performed << " loop detections, "
+                << bow_msgs_.size() << " remaining in the queue.";
     }
   }
   // if (!bow_msgs_.empty()) {
@@ -621,7 +620,6 @@ void DistributedLoopClosure::detectLoop(
     // Detect loop closures with all robots in the database
     // (including myself if inter_robot_only is set to false)
     if (robot_query == config_.my_id_) {
-      LOG(INFO) << "Detect loop for my own bow vector: " << pose_query;
       if (lcd_->detectLoop(vertex_query, bow_vec, &vertex_matches, &match_scores)) {
         for (size_t i = 0; i < vertex_matches.size(); ++i) {
           lcd::PotentialVLCEdge potential_edge(
@@ -657,6 +655,7 @@ void DistributedLoopClosure::detectLoop(
 
 void DistributedLoopClosure::verifyLoopSpin() {
   while (queued_lc_.size() > 0) {
+    VLOG(1) << "Verifying loop closures (" << queued_lc_.size() << " in the queue).";
     // Attempt to detect a single loop closure
     lcd::PotentialVLCEdge potential_edge = queued_lc_.front();
     const auto& vertex_query = potential_edge.vertex_src_;
@@ -678,18 +677,49 @@ void DistributedLoopClosure::verifyLoopSpin() {
       gtsam::Rot3 monoR_query_match;
       gtsam::Pose3 T_query_match;
       // Perform monocular RANSAC
-      if (lcd_->geometricVerificationNister(
-              vertex_query, vertex_match, &i_query, &i_match, &monoR_query_match)) {
+      LOG(INFO) << "Starting Nister geometric verification for loop closure between ("
+                << vertex_query.first << "," << vertex_query.second << ")-("
+                << vertex_match.first << "," << vertex_match.second << "). "
+                << "Match score: " << match_score 
+                << ", Num correspondences: " << i_query.size() 
+                << ", i_query size: " << i_query.size() 
+                << ", i_match size: " << i_match.size();
+      VLOG(1) << "performing geometric verification for loop closure between ("
+              << vertex_query.first << "," << vertex_query.second << ")-("
+              << vertex_match.first << "," << vertex_match.second << ").";
+      auto start_mono = std::chrono::high_resolution_clock::now();
+      bool nister_result = lcd_->geometricVerificationNister(
+              vertex_query, vertex_match, &i_query, &i_match, &monoR_query_match);
+      auto end_mono = std::chrono::high_resolution_clock::now();
+      std::chrono::duration<double> elapsed_mono = end_mono - start_mono;
+      LOG(INFO) << "Nister geometric verification completed for loop closure between ("
+                << vertex_query.first << "," << vertex_query.second << ")-("
+                << vertex_match.first << "," << vertex_match.second << "). "
+                << "Result: " << (nister_result ? "SUCCESS" : "FAILED")
+                << ", Elapsed time: " << elapsed_mono.count() * 1000 << " ms"
+                << ", Output inliers: " << i_query.size();
+      if (nister_result) {
+        VLOG(1) << "Monocular RANSAC succeeded for loop closure between ("
+                << vertex_query.first << "," << vertex_query.second << ")-("
+                << vertex_match.first << "," << vertex_match.second << ")."
+                << " Elapsed time: " << elapsed_mono.count() * 1000 << " ms.";
         size_t mono_inliers_count = i_query.size();
 
         // Perform stereo RANSAC, using relative rotation estimate from mono RANSAC as
         // prior
+        auto start_stereo = std::chrono::high_resolution_clock::now();
         if (lcd_->recoverPose(vertex_query,
                               vertex_match,
                               &i_query,
                               &i_match,
                               &T_query_match,
                               &monoR_query_match)) {
+          auto end_stereo = std::chrono::high_resolution_clock::now();
+          std::chrono::duration<double> elapsed_stereo = end_stereo - start_stereo;
+          VLOG(1) << "Stereo RANSAC succeeded for loop closure between ("
+                  << vertex_query.first << "," << vertex_query.second << ")-("
+                  << vertex_match.first << "," << vertex_match.second << ")."
+                  << " Elapsed time: " << elapsed_stereo.count() * 1000 << " ms.";
           size_t stereo_inliers_count = i_query.size();
           // Get loop closure between keyframes (for logging purpose)
           lcd::VLCEdge keyframe_edge(vertex_query, vertex_match, T_query_match);
@@ -760,7 +790,15 @@ void DistributedLoopClosure::verifyLoopSpin() {
                     << vertex_match.second << "). Normalized BoW score: " << match_score
                     << ". Mono inliers : " << mono_inliers_count
                     << ". Stereo inliers : " << stereo_inliers_count << ".";
+        } else {
+          VLOG(1) << "Failed stereo RANSAC for loop closure between ("
+                  << vertex_query.first << "," << vertex_query.second << ")-("
+                  << vertex_match.first << "," << vertex_match.second << ").";
         }
+      } else {
+        LOG(INFO) << "Failed geometric verification (Nister) for loop (" 
+                  << vertex_query.first << "," << vertex_query.second << ")-(" 
+                  << vertex_match.first << "," << vertex_match.second << ").";
       }
     }  // end lcd critical section
     queued_lc_.pop();

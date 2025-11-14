@@ -56,7 +56,7 @@ class DistributedLoopClosure {
   std::unordered_map<lcd::RobotId, lcd::PoseId>
       bow_latest_;  // Latest BoW received from each robot
   std::unordered_map<lcd::RobotId, std::unordered_set<lcd::PoseId>> bow_received_;
-  std::vector<pose_graph_tools_msgs::BowQuery>
+  std::queue<pose_graph_tools_msgs::BowQuery>
       bow_msgs_;  // New BoW messages that need to be processed
   std::mutex bow_msgs_mutex_;
 

@@ -10,6 +10,10 @@
 using namespace kimera_distributed;
 
 int main(int argc, char** argv) {
+  google::ParseCommandLineFlags(&argc, &argv, true);
+  google::InitGoogleLogging(argv[0]);
+  google::InstallFailureSignalHandler();
+
   ros::init(argc, argv, "kimera_distributed_loop_closure_node");
   ros::NodeHandle nh;
 

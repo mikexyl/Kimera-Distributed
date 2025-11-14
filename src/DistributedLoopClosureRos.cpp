@@ -94,6 +94,9 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   ros::param::get("~lcd_min_matched_features",
                   config.lcd_params_.lcd_min_matched_features_);
 
+  ros::param::get("~network_input_width", config.lcd_params_.network_input_width_);
+  ros::param::get("~network_input_height", config.lcd_params_.network_input_height_);
+
   ros::param::get("~detection_batch_size", config.detection_batch_size_);
   ros::param::get("~bow_skip_num", config.bow_skip_num_);
   // Load parameters controlling VLC communication
@@ -276,52 +279,52 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   tf_timer_ = nh_.createTimer(
       ros::Duration(1.0), &DistributedLoopClosureRos::tfTimerCallback, this);
 
-  ROS_INFO_STREAM(
-      "Distributed Kimera node initialized (ID = "
-      << config_.my_id_ << "). \n"
-      << "Parameters: \n"
-      << "alpha = " << config_.lcd_params_.alpha_ << "\n"
-      << "dist_local = " << config_.lcd_params_.dist_local_ << "\n"
-      << "max_db_results = " << config_.lcd_params_.max_db_results_ << "\n"
-      << "min_nss_factor = " << config_.lcd_params_.min_nss_factor_ << "\n"
-      << "lowe_ratio = " << config_.lcd_params_.lowe_ratio_ << "\n"
-      << "max_nrFrames_between_queries = "
-      << config_.lcd_params_.lcd_tp_params_.max_nrFrames_between_queries_ << "\n"
-      << "max_nrFrames_between_islands = "
-      << config_.lcd_params_.lcd_tp_params_.max_nrFrames_between_islands_ << "\n"
-      << "max_intraisland_gap = "
-      << config_.lcd_params_.lcd_tp_params_.max_intraisland_gap_ << "\n"
-      << "min_matches_per_island = "
-      << config_.lcd_params_.lcd_tp_params_.min_matches_per_island_ << "\n"
-      << "min_temporal_matches = "
-      << config_.lcd_params_.lcd_tp_params_.min_temporal_matches_ << "\n"
-      << "max_ransac_iterations = " << config_.lcd_params_.max_ransac_iterations_
-      << "\n"
-      << "mono ransac threshold = " << config_.lcd_params_.ransac_threshold_mono_
-      << "\n"
-      << "mono ransac max iterations = "
-      << config_.lcd_params_.max_ransac_iterations_mono_ << "\n"
-      << "mono ransac min inlier percentage = "
-      << config_.lcd_params_.ransac_inlier_percentage_mono_ << "\n"
-      << "ransac_threshold = " << config_.lcd_params_.ransac_threshold_ << "\n"
-      << "geometric_verification_min_inlier_count = "
-      << config_.lcd_params_.geometric_verification_min_inlier_count_ << "\n"
-      << "geometric_verification_min_inlier_percentage = "
-      << config_.lcd_params_.geometric_verification_min_inlier_percentage_ << "\n"
-      << "interrobot loop closure only = " << config_.lcd_params_.inter_robot_only_
-      << "\n"
-      << "maximum batch size to request BoW vectors = " << config_.bow_batch_size_
-      << "\n"
-      << "maximum batch size to request VLC frames = " << config_.vlc_batch_size_
-      << "\n"
-      << "Communication thread sleep time = " << config_.comm_sleep_time_ << "\n"
-      << "maximum submap size = " << config_.submap_params_.max_submap_size << "\n"
-      << "maximum submap distance = " << config_.submap_params_.max_submap_distance
-      << "\n"
-      << "loop detection batch size = " << config_.detection_batch_size_ << "\n"
-      << "loop synchronization batch size = " << config_.loop_batch_size_ << "\n"
-      << "loop synchronization sleep time = " << config_.loop_sync_sleep_time_ << "\n"
-      << "BoW vector skip num = " << config_.bow_skip_num_ << "\n");
+  LOG(INFO) << "Distributed Kimera node initialized (ID = " << config_.my_id_ << "). \n"
+            << "Parameters: \n"
+            << "alpha = " << config_.lcd_params_.alpha_ << "\n"
+            << "dist_local = " << config_.lcd_params_.dist_local_ << "\n"
+            << "max_db_results = " << config_.lcd_params_.max_db_results_ << "\n"
+            << "min_nss_factor = " << config_.lcd_params_.min_nss_factor_ << "\n"
+            << "lowe_ratio = " << config_.lcd_params_.lowe_ratio_ << "\n"
+            << "max_nrFrames_between_queries = "
+            << config_.lcd_params_.lcd_tp_params_.max_nrFrames_between_queries_ << "\n"
+            << "max_nrFrames_between_islands = "
+            << config_.lcd_params_.lcd_tp_params_.max_nrFrames_between_islands_ << "\n"
+            << "max_intraisland_gap = "
+            << config_.lcd_params_.lcd_tp_params_.max_intraisland_gap_ << "\n"
+            << "min_matches_per_island = "
+            << config_.lcd_params_.lcd_tp_params_.min_matches_per_island_ << "\n"
+            << "min_temporal_matches = "
+            << config_.lcd_params_.lcd_tp_params_.min_temporal_matches_ << "\n"
+            << "max_ransac_iterations = " << config_.lcd_params_.max_ransac_iterations_
+            << "\n"
+            << "mono ransac threshold = " << config_.lcd_params_.ransac_threshold_mono_
+            << "\n"
+            << "mono ransac max iterations = "
+            << config_.lcd_params_.max_ransac_iterations_mono_ << "\n"
+            << "mono ransac min inlier percentage = "
+            << config_.lcd_params_.ransac_inlier_percentage_mono_ << "\n"
+            << "ransac_threshold = " << config_.lcd_params_.ransac_threshold_ << "\n"
+            << "geometric_verification_min_inlier_count = "
+            << config_.lcd_params_.geometric_verification_min_inlier_count_ << "\n"
+            << "geometric_verification_min_inlier_percentage = "
+            << config_.lcd_params_.geometric_verification_min_inlier_percentage_ << "\n"
+            << "interrobot loop closure only = "
+            << config_.lcd_params_.inter_robot_only_ << "\n"
+            << "maximum batch size to request BoW vectors = " << config_.bow_batch_size_
+            << "\n"
+            << "maximum batch size to request VLC frames = " << config_.vlc_batch_size_
+            << "\n"
+            << "Communication thread sleep time = " << config_.comm_sleep_time_ << "\n"
+            << "maximum submap size = " << config_.submap_params_.max_submap_size
+            << "\n"
+            << "maximum submap distance = "
+            << config_.submap_params_.max_submap_distance << "\n"
+            << "loop detection batch size = " << config_.detection_batch_size_ << "\n"
+            << "loop synchronization batch size = " << config_.loop_batch_size_ << "\n"
+            << "loop synchronization sleep time = " << config_.loop_sync_sleep_time_
+            << "\n"
+            << "BoW vector skip num = " << config_.bow_skip_num_ << "\n";
 
   if (config_.run_offline_) {
     // publish submap poses
