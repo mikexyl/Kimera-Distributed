@@ -627,7 +627,50 @@ void DistributedLoopClosure::detectLoop(
 
           {  // start candidate critical section. Add to candidate for request
             std::unique_lock<std::mutex> candidate_lock(candidate_lc_mutex_);
-            candidate_lc_.at(robot_query).push_back(potential_edge);
+            // Avoid adding repeated loop-closure candidates. Repeated means there
+            // already exists a candidate or queued verification with both source and
+            // destination poses within +/- kRepeatWindow frames.
+            const int kRepeatWindow = 10;
+            bool is_repeated = false;
+
+            // Check existing unresolved candidates for this robot.
+            for (const auto& existing : candidate_lc_.at(robot_query)) {
+              const int src_diff = std::abs((int)existing.vertex_src_.second -
+                                            (int)potential_edge.vertex_src_.second);
+              const int dst_diff = std::abs((int)existing.vertex_dst_.second -
+                                            (int)potential_edge.vertex_dst_.second);
+              if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
+                is_repeated = true;
+                break;
+              }
+            }
+
+            // Also check already-queued candidates awaiting verification.
+            if (!is_repeated) {
+              std::queue<lcd::PotentialVLCEdge> qcopy = queued_lc_;
+              while (!qcopy.empty()) {
+                const auto& existing = qcopy.front();
+                const int src_diff = std::abs((int)existing.vertex_src_.second -
+                                              (int)potential_edge.vertex_src_.second);
+                const int dst_diff = std::abs((int)existing.vertex_dst_.second -
+                                              (int)potential_edge.vertex_dst_.second);
+                if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
+                  is_repeated = true;
+                  break;
+                }
+                qcopy.pop();
+              }
+            }
+
+            if (!is_repeated) {
+              candidate_lc_.at(robot_query).push_back(potential_edge);
+            } else {
+              VLOG(2) << "Skipping repeated candidate LC for ("
+                      << potential_edge.vertex_src_.first << ","
+                      << potential_edge.vertex_src_.second << ")-("
+                      << potential_edge.vertex_dst_.first << ","
+                      << potential_edge.vertex_dst_.second << ")";
+            }
           }  // end candidate critical section
         }
       }
@@ -645,7 +688,43 @@ void DistributedLoopClosure::detectLoop(
           {
             // start candidate critical section. Add to candidate for request
             std::unique_lock<std::mutex> candidate_lock(candidate_lc_mutex_);
-            candidate_lc_.at(robot_query).push_back(potential_edge);
+            // Avoid adding repeated loop-closure candidates (see above block).
+            const int kRepeatWindow = 10;
+            bool is_repeated = false;
+            for (const auto& existing : candidate_lc_.at(robot_query)) {
+              const int src_diff = std::abs((int)existing.vertex_src_.second -
+                                            (int)potential_edge.vertex_src_.second);
+              const int dst_diff = std::abs((int)existing.vertex_dst_.second -
+                                            (int)potential_edge.vertex_dst_.second);
+              if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
+                is_repeated = true;
+                break;
+              }
+            }
+            if (!is_repeated) {
+              std::queue<lcd::PotentialVLCEdge> qcopy = queued_lc_;
+              while (!qcopy.empty()) {
+                const auto& existing = qcopy.front();
+                const int src_diff = std::abs((int)existing.vertex_src_.second -
+                                              (int)potential_edge.vertex_src_.second);
+                const int dst_diff = std::abs((int)existing.vertex_dst_.second -
+                                              (int)potential_edge.vertex_dst_.second);
+                if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
+                  is_repeated = true;
+                  break;
+                }
+                qcopy.pop();
+              }
+            }
+            if (!is_repeated) {
+              candidate_lc_.at(robot_query).push_back(potential_edge);
+            } else {
+              VLOG(2) << "Skipping repeated candidate LC for ("
+                      << potential_edge.vertex_src_.first << ","
+                      << potential_edge.vertex_src_.second << ")-("
+                      << potential_edge.vertex_dst_.first << ","
+                      << potential_edge.vertex_dst_.second << ")";
+            }
           }  // end candidate critical section
         }
       }
@@ -680,16 +759,16 @@ void DistributedLoopClosure::verifyLoopSpin() {
       LOG(INFO) << "Starting Nister geometric verification for loop closure between ("
                 << vertex_query.first << "," << vertex_query.second << ")-("
                 << vertex_match.first << "," << vertex_match.second << "). "
-                << "Match score: " << match_score 
-                << ", Num correspondences: " << i_query.size() 
-                << ", i_query size: " << i_query.size() 
+                << "Match score: " << match_score
+                << ", Num correspondences: " << i_query.size()
+                << ", i_query size: " << i_query.size()
                 << ", i_match size: " << i_match.size();
       VLOG(1) << "performing geometric verification for loop closure between ("
               << vertex_query.first << "," << vertex_query.second << ")-("
               << vertex_match.first << "," << vertex_match.second << ").";
       auto start_mono = std::chrono::high_resolution_clock::now();
       bool nister_result = lcd_->geometricVerificationNister(
-              vertex_query, vertex_match, &i_query, &i_match, &monoR_query_match);
+          vertex_query, vertex_match, &i_query, &i_match, &monoR_query_match);
       auto end_mono = std::chrono::high_resolution_clock::now();
       std::chrono::duration<double> elapsed_mono = end_mono - start_mono;
       LOG(INFO) << "Nister geometric verification completed for loop closure between ("
@@ -796,8 +875,8 @@ void DistributedLoopClosure::verifyLoopSpin() {
                   << vertex_match.first << "," << vertex_match.second << ").";
         }
       } else {
-        LOG(INFO) << "Failed geometric verification (Nister) for loop (" 
-                  << vertex_query.first << "," << vertex_query.second << ")-(" 
+        LOG(INFO) << "Failed geometric verification (Nister) for loop ("
+                  << vertex_query.first << "," << vertex_query.second << ")-("
                   << vertex_match.first << "," << vertex_match.second << ").";
       }
     }  // end lcd critical section

@@ -1,9 +1,9 @@
 # Yaml configuration for visual loop closure parameters 
 
-detect_interrobot_only: true
+detect_interrobot_only: false
 
 # Matcher parameters (DBoW2)
-# alpha: 0.5
+alpha: 0.7
 dist_local: 90
 max_db_results: 2
 min_nss_factor: 0.05 
@@ -21,9 +21,9 @@ max_ransac_iterations_mono: 1000
 
 # Stereo RANSAC
 max_ransac_iterations: 1000
-ransac_threshold: 0.3
+ransac_threshold: 0.5
 geometric_verification_min_inlier_count: 10
-geometric_verification_min_inlier_percentage: 0.1
+geometric_verification_min_inlier_percentage: 0.0
 
 lcd_lg_num_features: 500
 lcd_lg_model_path: /workspaces/src/xfeat-cpp/onnx_model/lg_320x224_dyn.onnx

@@ -20,12 +20,17 @@
   <arg name="RTR_gradnorm_tol"            default="0.5" />
   <arg name="rel_change_tol"              default="0.2" />
   <arg name="gnc_inner_iters"             default="50" />
-  <arg name="synchronize_measurements"    default="false" />
+  <arg name="synchronize_measurements"    default="true" />
+
+  <arg name="asynchronous"            default="true" />
+  <!-- dc2pgo or cbs -->
+  <arg name="solver_type"            default="cbs" />
 
   <!-- Launch robot in its unique namespace -->
   <group ns="$(arg robot_name)">
     <!-- Launch dpgo_ros -->
     <include file="$(find dpgo_ros)/launch/PGOAgent.launch">
+      <arg name="max_iteration_number"             value="20" />
       <arg name="agent_id"                         value="$(arg robot_id)" />
       <arg name="num_robots"                       value="$(arg num_robots)" />
       <arg name="robot_names_file"                 value="$(find kimera_distributed)/params/$(arg robot_names_config).yaml" />
@@ -40,25 +45,19 @@
       <arg name="RTR_tCG_iterations"               value="50" />
       <arg name="RTR_gradnorm_tol"                 value="$(arg RTR_gradnorm_tol)" />
       <arg name="relative_change_tolerance"        value="$(arg rel_change_tol)" />
-      <arg name="robust_cost_type"                 value="GNC_TLS" />
-      <arg name="GNC_use_probability"              value="false" />
-      <arg name="GNC_quantile"                     value="0.9" />
-      <arg name="GNC_barc"                         value="3.0" />
-      <arg name="GNC_mu_step"                      value="2.0" />
-      <arg name="GNC_init_mu"                      value="1e-5" />
-      <arg name="robust_init_min_inliers"          value="3" />
-      <arg name="robust_opt_num_weight_updates"    value="3" />
-      <arg name="robust_opt_num_resets"            value="3" />
-      <arg name="robust_opt_min_convergence_ratio" value="0.0" />
-      <arg name="robust_opt_inner_iters_per_robot" value="$(arg gnc_inner_iters)" />
       <arg name="inter_update_sleep_time"          value="0.1" />
       <arg name="max_delayed_iterations"           value="0"  />
       <arg name="max_distributed_init_steps"       value="20" />
       <arg name="timeout_threshold"                value="15" />
       <arg name="synchronize_measurements"         value="$(arg synchronize_measurements)" />
-      <arg name="visualize_loop_closures"          value="false" />
+      <arg name="visualize_loop_closures"          value="true" />
       <arg name="enable_recovery"                  value="false" />
       <arg name="log_directory"                    value="$(arg log_output_path)/" />
+      <arg name="asynchronous"                     value="$(arg asynchronous)" />
+      <arg name="asynchronous_rate"                value="1" />
+      <!-- <arg name="solver_type"                      value="$(arg solver_type)" /> -->
+      <!-- cbs doesn't support relaxation rank, so it must be 3 -->
+      <arg name="relaxation_rank"                  value="3" />
     </include> 
 
   </group>

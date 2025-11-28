@@ -131,8 +131,22 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
       << "Robot name for robot ID " << config.my_id_ << " not found! have "
       << config.robot_names_.size() << " names loaded.";
 
-  rerun_visualizer_ = std::make_unique<RerunVisualizer>(
-      config.robot_names_.at(config.my_id_), odom_frame_id_, world_frame_id_);
+  // get time str HHMM
+  auto now = std::chrono::system_clock::now();
+  std::time_t now_c = std::chrono::system_clock::to_time_t(now);
+  std::tm now_tm = *std::localtime(&now_c);
+  char time_str[5];
+  std::strftime(time_str, sizeof(time_str), "%H%M", &now_tm);
+  std::string record_id = "dlcd" + std::string(time_str);
+
+  rerun_visualizer_ =
+      std::make_shared<RerunVisualizer>(config.robot_names_.at(config.my_id_),
+                                        config.robot_names_.at(config.my_id_),
+                                        odom_frame_id_,
+                                        world_frame_id_);
+  // std::string(time_str));
+
+  lcd_->setVisualizer(rerun_visualizer_);
 
   ros::param::get("~max_submap_size", config.submap_params_.max_submap_size);
   ros::param::get("~max_submap_distance", config.submap_params_.max_submap_distance);
@@ -350,7 +364,12 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   ROS_INFO("Robot %zu started communication thread.", config_.my_id_);
 
   start_time_ = ros::Time::now();
-  next_loop_sync_time_ = ros::Time::now();
+  if (config_.loop_sync_sleep_time_ > 0) {
+    next_loop_sync_time_ =
+        ros::Time::now() + ros::Duration(config_.loop_sync_sleep_time_);
+  } else {
+    next_loop_sync_time_ = std::nullopt;
+  }
   next_latest_bow_pub_time_ = ros::Time::now();
 }
 
@@ -502,6 +521,16 @@ void DistributedLoopClosureRos::tfTimerCallback(const ros::TimerEvent& event) {
   publishWorldToDpgoCorrection();
   publishOdomToWorld();
   publishLatestKFToOdom();  // Currently for debugging
+
+  size_t total_bow_mb =
+      std::accumulate(received_bow_bytes_.begin(), received_bow_bytes_.end(), 0);
+  rerun_visualizer_->drawScalar(
+      config_.robot_names_.at(config_.my_id_) + "/received_bow_byte", total_bow_mb);
+
+  size_t total_vlc_mb =
+      std::accumulate(received_vlc_bytes_.begin(), received_vlc_bytes_.end(), 0);
+  rerun_visualizer_->drawScalar(
+      config_.robot_names_.at(config_.my_id_) + "/received_vlc_byte", total_vlc_mb);
 }
 
 void DistributedLoopClosureRos::runDetection() {
@@ -542,9 +571,13 @@ void DistributedLoopClosureRos::runComms() {
     publishFrames();
 
     // Publish new inter-robot loop closures, if any
-    if (ros::Time::now().toSec() > next_loop_sync_time_.toSec()) {
+    if (next_loop_sync_time_ &&
+        ros::Time::now().toSec() > next_loop_sync_time_->toSec()) {
       initializeLoopPublishers();
       publishQueuedLoops();
+      // TODO: cbs doesn't need to sync loops, leave it here for now for easier
+      // adaptation
+      // LOG(FATAL) << "sync loops should never happen in CBS";
 
       // Generate a random sleep time
       std::random_device rd;
@@ -552,7 +585,7 @@ void DistributedLoopClosureRos::runComms() {
       std::uniform_real_distribution<double> distribution(
           0.5 * config_.loop_sync_sleep_time_, 1.5 * config_.loop_sync_sleep_time_);
       double sleep_time = distribution(gen);
-      next_loop_sync_time_ += ros::Duration(sleep_time);
+      *next_loop_sync_time_ += ros::Duration(sleep_time);
     }
 
     // Once a while publish latest BoW vector

@@ -3,12 +3,41 @@
 #include <aria_viz/visualizer_rerun.h>
 #include <glog/logging.h>
 #include <gtsam/slam/dataset.h>
+#include <log4cxx/appenderskeleton.h>
+#include <log4cxx/helpers/stringhelper.h>
+#include <log4cxx/spi/loggingevent.h>
 #include <spdlog/fmt/fmt.h>
 
 #include <chrono>
 #include <future>
 
+#include "kimera_multi_lcd/visualizer.h"
+
 namespace kimera_distributed {
+
+namespace lcd = kimera_multi_lcd;
+
+using RosLogHandler =
+    std::function<void(const std::string& msg, log4cxx::LevelPtr level)>;
+
+class CustomRosAppender : public log4cxx::AppenderSkeleton {
+ public:
+  CustomRosAppender(RosLogHandler handler) : handler_(std::move(handler)) {}
+
+ protected:
+  void append(const log4cxx::spi::LoggingEventPtr& event,
+              log4cxx::helpers::Pool& pool) override {
+    std::string msg = event->getRenderedMessage();
+    auto level = event->getLevel();
+
+    handler_(msg, level);
+  }
+
+  void close() override {}
+  bool requiresLayout() const override { return false; }
+
+  RosLogHandler handler_;
+};
 
 // Alias for the custom log handler signature
 using GlogHandler = std::function<void(google::LogSeverity severity,
@@ -73,9 +102,11 @@ class GlogStreamBuf : public std::streambuf {
   char buffer_[1024];
 };
 
-class RerunVisualizer : public aria::viz::VisualizerRerun {
+class RerunVisualizer : public aria::viz::VisualizerRerun,
+                        public kimera_multi_lcd::Visualizer {
  public:
   struct Params {
+    std::string entity_prefix = "";
     std::string base_link_frame_id = "baselink";
     std::string odom_frame_id = "odom";
     std::string map_frame_id = "map";
@@ -85,12 +116,14 @@ class RerunVisualizer : public aria::viz::VisualizerRerun {
   };
 
   RerunVisualizer(const Params& params)
-      : RerunVisualizer(params.base_link_frame_id,
+      : RerunVisualizer(params.entity_prefix,
+                        params.base_link_frame_id,
                         params.odom_frame_id,
                         params.map_frame_id,
                         params.recording_id) {}
 
-  RerunVisualizer(std::string base_link_frame_id = "baselink",
+  RerunVisualizer(std::string entity_prefix,
+                  std::string base_link_frame_id = "baselink",
                   std::string odom_frame_id = "odom",
                   std::string map_frame_id = "map",
                   std::optional<std::string> recording_id = std::nullopt)
@@ -105,20 +138,42 @@ class RerunVisualizer : public aria::viz::VisualizerRerun {
     this->drawTf(map_, Pose3::Identity(), 0.3, true);
 
     if (not g_custom_sink) {
-      AddGlogCustomSink([this](google::LogSeverity severity,
-                               const char* filename,
-                               int line,
-                               const char* message) {
-        logGlogMessages(severity, filename, line, message);
+      AddGlogCustomSink([this, entity_prefix](google::LogSeverity severity,
+                                              const char* filename,
+                                              int line,
+                                              const char* message) {
+        logGlogMessages(entity_prefix, severity, filename, line, message);
       });
       RedirectStdCoutToGlog();
     }
+
+    ros_appender_ = std::make_shared<CustomRosAppender>(
+        [this, entity_prefix](const std::string& msg, log4cxx::LevelPtr level) {
+          // Map log4cxx levels to glog severities
+          google::LogSeverity severity;
+          if (level->isGreaterOrEqual(log4cxx::Level::getFatal())) {
+            severity = google::GLOG_FATAL;
+          } else if (level->isGreaterOrEqual(log4cxx::Level::getError())) {
+            severity = google::GLOG_ERROR;
+          } else if (level->isGreaterOrEqual(log4cxx::Level::getWarn())) {
+            severity = google::GLOG_WARNING;
+          } else {
+            severity = google::GLOG_INFO;
+          }
+          logGlogMessages(entity_prefix, severity, "ROS", 0, msg.c_str());
+        });
+
+    // get ROS root logger
+    log4cxx::LoggerPtr root_logger = log4cxx::Logger::getRootLogger();
+    root_logger->addAppender(ros_appender_.get());
   }
 
   virtual ~RerunVisualizer() = default;
 
   // Hold the active custom sink so it persists for the program lifetime.
   static std::unique_ptr<CustomLogSink> g_custom_sink;
+
+  std::shared_ptr<CustomRosAppender> ros_appender_;
 
   // Call this after google::InitGoogleLogging(), to attach your custom handler
   // in addition to glog's default sinks (stderr and/or log files).
@@ -161,7 +216,8 @@ class RerunVisualizer : public aria::viz::VisualizerRerun {
     }
   }
 
-  void logGlogMessages(google::LogSeverity severity,
+  void logGlogMessages(std::string log_entity,
+                       google::LogSeverity severity,
                        const char* filename,
                        int line,
                        const char* message) {
@@ -184,9 +240,8 @@ class RerunVisualizer : public aria::viz::VisualizerRerun {
         level = rerun::TextLogLevel::Debug;  // Default to Debug for other
                                              // severities
     }
-
     // Forward glog messages to Rerun
-    this->rec()->log("glog",
+    this->rec()->log(log_entity + "/glog",
                      rerun::TextLog(fmt::format("{}", message)).with_level(level));
   }
 
@@ -281,6 +336,50 @@ class RerunVisualizer : public aria::viz::VisualizerRerun {
       }
     }
     return colors;
+  }
+
+  void visualizeMatchesVersors(lcd::VLCFrame* frame1,
+                               lcd::VLCFrame* frame2,
+                               const lcd::BearingVectors& versors1,
+                               const lcd::BearingVectors& versors2) override {
+    std::vector<std::array<float, 2>> vectors;
+    std::vector<std::array<float, 2>> origins;
+    for (size_t i = 0; i < versors1.size(); ++i) {
+      origins.push_back(
+          {static_cast<float>(versors1[i].x()), static_cast<float>(versors1[i].y())});
+      vectors.push_back({static_cast<float>(versors2[i].x() - versors1[i].x()),
+                         static_cast<float>(versors2[i].y() - versors1[i].y())});
+    }
+    this->rec()->log("versor_arrows",
+                     rerun::Arrows2D::from_vectors(vectors)
+                         .with_origins(origins)
+                         .with_radii({rerun::components::Radius::ui_points(1)})
+                         .with_colors({rerun::components::Color{255, 0, 0}}));
+  }
+
+  /**
+   * @brief Visualize matches between keypoints from two frames
+   * @param frame1 The first VLCFrame
+   * @param frame2 The second VLCFrame
+   * @param matches Vector of pairs (index in frame1, index in frame2)
+   */
+  void visualizeMatchesKeypoints(lcd::VLCFrame* frame1,
+                                 lcd::VLCFrame* frame2,
+                                 const std::vector<unsigned int>& match1,
+                                 const std::vector<unsigned int>& match2) override {
+    std::vector<std::array<float, 2>> vectors;
+    std::vector<std::array<float, 2>> origins;
+    for (size_t i = 0; i < match1.size(); ++i) {
+      const auto& kp1 = frame1->keypoints_[match1[i]];
+      const auto& kp2 = frame2->keypoints_[match2[i]];
+      origins.push_back({kp1.x, kp1.y});
+      vectors.push_back({kp2.x - kp1.x, kp2.y - kp1.y});
+    }
+    this->rec()->log("keypoint_arrows",
+                     rerun::Arrows2D::from_vectors(vectors)
+                         .with_origins(origins)
+                         .with_radii({rerun::components::Radius::ui_points(1)})
+                         .with_colors({rerun::components::Color{255, 0, 0}}));
   }
 
  private:

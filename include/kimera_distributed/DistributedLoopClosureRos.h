@@ -39,7 +39,7 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ~DistributedLoopClosureRos();
 
  private:
-  std::unique_ptr<RerunVisualizer> rerun_visualizer_;
+  std::shared_ptr<RerunVisualizer> rerun_visualizer_;
 
   ros::NodeHandle nh_;
   std::atomic<bool> should_shutdown_{false};
@@ -76,7 +76,7 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ros::Timer log_timer_;
   ros::Timer tf_timer_;
   ros::Time start_time_;
-  ros::Time next_loop_sync_time_;
+  std::optional<ros::Time> next_loop_sync_time_;
   ros::Time next_latest_bow_pub_time_;
 
   // TF broadcaster from world to robot's odom frame
