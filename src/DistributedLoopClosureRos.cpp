@@ -94,6 +94,9 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   ros::param::get("~lcd_min_matched_features",
                   config.lcd_params_.lcd_min_matched_features_);
 
+  ros::param::get("~image_width", config.lcd_params_.image_width_);
+  ros::param::get("~image_height", config.lcd_params_.image_height_);
+
   ros::param::get("~network_input_width", config.lcd_params_.network_input_width_);
   ros::param::get("~network_input_height", config.lcd_params_.network_input_height_);
 

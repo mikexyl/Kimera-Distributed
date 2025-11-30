@@ -39,7 +39,6 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ~DistributedLoopClosureRos();
 
  private:
-  std::shared_ptr<RerunVisualizer> rerun_visualizer_;
 
   ros::NodeHandle nh_;
   std::atomic<bool> should_shutdown_{false};

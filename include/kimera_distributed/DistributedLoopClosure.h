@@ -25,6 +25,7 @@
 #include <thread>
 #include <vector>
 
+#include "kimera_distributed/RerunVisualizer.h"
 #include "kimera_distributed/SubmapAtlas.h"
 #include "kimera_distributed/configs.h"
 #include "kimera_distributed/utils.h"
@@ -122,6 +123,8 @@ class DistributedLoopClosure {
   size_t bow_backlog_,
       vlc_backlog_;  // Current backlog (number of missing BoW and VLC frames)
   std::vector<size_t> num_loops_with_robot_;
+
+  std::shared_ptr<RerunVisualizer> rerun_visualizer_;
 
  protected:
   /**

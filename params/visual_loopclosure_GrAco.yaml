@@ -25,6 +25,9 @@ ransac_threshold: 0.5
 geometric_verification_min_inlier_count: 10
 geometric_verification_min_inlier_percentage: 0.0
 
+image_width: 1600
+image_height: 1100
+
 lcd_lg_num_features: 500
 lcd_lg_model_path: /workspaces/src/xfeat-cpp/onnx_model/lg_320x224_dyn.onnx
 lcd_faiss_index_path: ""
