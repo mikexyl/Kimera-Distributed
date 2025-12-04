@@ -142,11 +142,21 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   std::strftime(time_str, sizeof(time_str), "%H%M", &now_tm);
   std::string record_id = "dlcd" + std::string(time_str);
 
+  std::vector<std::string> gt_files;
+  ros::param::get("~gt_files", gt_files);
+
   rerun_visualizer_ =
       std::make_shared<RerunVisualizer>(config.robot_names_.at(config.my_id_),
                                         config.robot_names_.at(config.my_id_),
                                         odom_frame_id_,
                                         world_frame_id_);
+
+  for (int i = 0; i < gt_files.size(); i++) {
+    rerun_visualizer_->loadGTTrajectory(gt_files[i], i);
+  }
+
+  rerun_visualizer_->visualizeGTTrajectories();
+
   // std::string(time_str));
 
   lcd_->setVisualizer(rerun_visualizer_);
@@ -638,11 +648,16 @@ void DistributedLoopClosureRos::publishBowVectors() {
   }
   // Send BoW vectors to selected robot
   pose_graph_tools_msgs::BowQueries msg;
+  msg.header.stamp = ros::Time::now();
   msg.destination_robot_id = robot_id_to_publish;
   for (const auto& robot_pose_id : bow_vectors_to_publish) {
     pose_graph_tools_msgs::BowQuery query_msg;
     query_msg.robot_id = robot_pose_id.first;
     query_msg.pose_id = robot_pose_id.second;
+    CHECK(pose_timestamp_map_.find(robot_pose_id) != pose_timestamp_map_.end());
+    CHECK(pose_timestamp_map_.at(robot_pose_id) != 0);
+    query_msg.header.stamp =
+        ros::Time().fromNSec(pose_timestamp_map_.at(robot_pose_id));
     kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(robot_pose_id),
                                         &(query_msg.bow_vector));
     msg.queries.push_back(query_msg);
@@ -661,10 +676,14 @@ void DistributedLoopClosureRos::publishLatestBowVector() {
     pose_graph_tools_msgs::BowQuery query_msg;
     query_msg.robot_id = config_.my_id_;
     query_msg.pose_id = pose_id;
+    CHECK(pose_timestamp_map_.find(latest_id) != pose_timestamp_map_.end());
+    CHECK(pose_timestamp_map_.at(latest_id) != 0);
+    query_msg.header.stamp = ros::Time().fromNSec(pose_timestamp_map_.at(latest_id));
     kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(latest_id),
                                         &(query_msg.bow_vector));
 
     pose_graph_tools_msgs::BowQueries msg;
+    msg.header.stamp = ros::Time::now();
     msg.queries.push_back(query_msg);
     for (lcd::RobotId robot_id = 0; robot_id < config_.my_id_; ++robot_id) {
       msg.destination_robot_id = robot_id;

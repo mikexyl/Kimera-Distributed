@@ -110,7 +110,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
     std::string base_link_frame_id = "baselink";
     std::string odom_frame_id = "odom";
     std::string map_frame_id = "map";
-    std::string gt_csv_file = "";
+    std::string gt_file = "";
     std::optional<std::string> recording_id = std::nullopt;
     std::string result_dir = "rerun_results";
   };
@@ -382,12 +382,181 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
                          .with_colors({rerun::components::Color{255, 0, 0}}));
   }
 
+  void loadGTTrajectory(const std::string& gt_file, lcd::RobotId robot_id) {
+    std::lock_guard<std::mutex> lock(rerun_mutex_);
+    CHECK(!gt_file.empty());
+
+    // load tum txt gt file
+    // TUM format: timestamp tx ty tz qx qy qz qw
+    std::ifstream file(gt_file);
+    CHECK(file.is_open());
+
+    std::string line;
+    size_t pose_idx = 0;
+    while (std::getline(file, line)) {
+      // Skip empty lines and comments
+      if (line.empty() || line[0] == '#') {
+        continue;
+      }
+
+      std::istringstream iss(line);
+      double timestamp, tx, ty, tz, qx, qy, qz, qw;
+      if (!(iss >> timestamp >> tx >> ty >> tz >> qx >> qy >> qz >> qw)) {
+        LOG(WARNING) << "Failed to parse line: " << line;
+        continue;
+      }
+
+      // Create GTSAM Pose3 from TUM format (qx, qy, qz, qw, tx, ty, tz)
+      gtsam::Rot3 rotation = gtsam::Rot3::Quaternion(qw, qx, qy, qz);
+      gtsam::Point3 translation(tx, ty, tz);
+      gtsam::Pose3 pose(rotation, translation);
+
+      // Store in trajectory with incrementing index as key
+      gtsam::Symbol key(robot_id, pose_idx);  // 'g' for ground truth
+      gt_trajectories_.insert(key, pose);
+      gt_timestamps_[static_cast<uint64_t>(timestamp * 1e9)] = key;
+      pose_idx++;
+    }
+
+    file.close();
+    LOG(INFO) << "Loaded " << pose_idx << " GT poses from " << gt_file;
+  }
+
+  void visualizeGTTrajectories() {
+    std::lock_guard<std::mutex> lock(rerun_mutex_);
+    std::vector<Point3> points;
+    int skip = 10;
+    for (const auto& key_value : gt_trajectories_) {
+      if (Symbol(key_value.key).index() % skip != 0) {
+        continue;
+      }
+      points.push_back(key_value.value.cast<Pose3>().translation());
+    }
+    this->drawPoints(
+        "gt/trajectories", points, aria::viz::ColorMap::kGray, {1.0f}, {}, true);
+  }
+
+  void visualizeCandidates(std::string name,
+                           const lcd::RobotPoseId& query_id,
+                           const std::vector<lcd::RobotPoseId>& candidate_ids,
+                           const std::vector<float>& candidate_scores,
+                           const std::map<lcd::RobotPoseId, uint64_t>& timestamps) {
+    std::lock_guard<std::mutex> lock(rerun_mutex_);
+    if (candidate_ids.empty()) {
+      return;
+    }
+
+    KeyVector keys;
+
+    LOG(INFO) << "Visualizing candidates for query "
+              << "(" << query_id.first << ", " << query_id.second << "), with "
+              << candidate_ids.size() << " candidates.";
+
+    // Tolerance for timestamp matching: 50 ms (in nanoseconds)
+    const uint64_t kToleranceNs = static_cast<uint64_t>(0.05 * 1e9);
+
+    // Helper lambda to find closest GT timestamp within tolerance
+    auto find_closest_gt =
+        [this, kToleranceNs](uint64_t query_ts) -> std::optional<gtsam::Symbol> {
+      if (gt_timestamps_.empty()) return std::nullopt;
+
+      auto it = gt_timestamps_.lower_bound(query_ts);
+      std::optional<gtsam::Symbol> best;
+      uint64_t best_diff = std::numeric_limits<uint64_t>::max();
+
+      // Check the iterator at or after query_ts
+      if (it != gt_timestamps_.end()) {
+        uint64_t diff =
+            (it->first > query_ts) ? (it->first - query_ts) : (query_ts - it->first);
+        if (diff < best_diff) {
+          best_diff = diff;
+          best = it->second;
+        }
+      }
+
+      // Check the previous timestamp (before query_ts)
+      if (it != gt_timestamps_.begin()) {
+        auto it_prev = std::prev(it);
+        uint64_t diff = (it_prev->first > query_ts) ? (it_prev->first - query_ts)
+                                                    : (query_ts - it_prev->first);
+        if (diff < best_diff) {
+          best_diff = diff;
+          best = it_prev->second;
+        }
+      }
+
+      // Return best match only if within tolerance
+      if (best && best_diff <= kToleranceNs) return best;
+      return std::nullopt;
+    };
+
+    auto it_query_ts = timestamps.find(query_id);
+    if (it_query_ts == timestamps.end()) {
+      LOG(FATAL) << "Query id not found in timestamps map: (" << query_id.first << ", "
+                 << query_id.second << ")";
+    }
+    auto opt_query_sym = find_closest_gt(it_query_ts->second);
+    CHECK(opt_query_sym);
+    keys.push_back(*opt_query_sym);
+
+    for (const auto& candidate_id : candidate_ids) {
+      // find the closest gt timestamp to the candidate timestamp, with some tolerance
+      auto it_cand_ts = timestamps.find(candidate_id);
+
+      if (it_cand_ts == timestamps.end()) {
+        LOG(FATAL) << "Candidate id not found in timestamps map: ("
+                   << candidate_id.first << ", " << candidate_id.second << ")";
+      }
+      auto opt_cand_sym = find_closest_gt(it_cand_ts->second);
+
+      if (opt_cand_sym && opt_query_sym) {
+        keys.push_back(*opt_cand_sym);
+      } else {
+        LOG(FATAL) << "Could not find GT match for candidate or query timestamp."
+                   << " Candidate ts: " << it_cand_ts->second
+                   << ", Query ts: " << it_query_ts->second << "first gt timestamp: "
+                   << (gt_timestamps_.empty() ? 0 : gt_timestamps_.begin()->first);
+      }
+    }
+    std::vector<gtsam::Point3> gt_points;
+    for (const auto& key : keys) {
+      gt_points.push_back(gt_trajectories_.at<gtsam::Pose3>(key).translation());
+    }
+    std::string entry =
+        fmt::format("gt/{}-{}/{}", query_id.first, candidate_ids[0].first, name);
+    std::vector<std::string> labels;
+    labels.push_back("q");
+    for (const auto& score : candidate_scores) {
+      labels.push_back(fmt::format("{:.2f}", score));
+    }
+    this->drawPoints(
+        entry, gt_points, aria::viz::ColorMap::kBlue, {2.f}, labels, false);
+  }
+
+  void visualizeCandidates(std::string name,
+                           const lcd::RobotPoseId& query_id,
+                           const std::vector<lcd::RobotPoseId>& candidate_ids,
+                           const std::vector<float>& candidate_scores) override {
+    visualizeCandidates(
+        name, query_id, candidate_ids, candidate_scores, pose_timestamp_map_);
+  }
+
+  void updatePoseTimestampMap(const std::map<lcd::RobotPoseId, uint64_t>& new_map) {
+    std::lock_guard<std::mutex> lock(rerun_mutex_);
+    pose_timestamp_map_ = new_map;
+  }
+
  private:
   std::filesystem::path baselink_;
   std::filesystem::path map_;
   std::filesystem::path odom_;
 
   std::mutex rerun_mutex_;
+
+  gtsam::Values gt_trajectories_;
+  std::map<uint64_t, gtsam::Symbol> gt_timestamps_;
+
+  std::map<lcd::RobotPoseId, uint64_t> pose_timestamp_map_;
 };
 
 }  // namespace kimera_distributed

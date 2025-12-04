@@ -1,6 +1,6 @@
 # Yaml configuration for visual loop closure parameters 
 
-detect_interrobot_only: false
+detect_interrobot_only: true
 
 # Matcher parameters (DBoW2)
 alpha: 0.7
@@ -21,8 +21,8 @@ max_ransac_iterations_mono: 1000
 
 # Stereo RANSAC
 max_ransac_iterations: 1000
-ransac_threshold: 0.5
-geometric_verification_min_inlier_count: 10
+ransac_threshold: 0.3
+geometric_verification_min_inlier_count: 5
 geometric_verification_min_inlier_percentage: 0.0
 
 image_width: 1600
@@ -40,3 +40,5 @@ lcd_min_matched_features: 30
 
 network_input_width: 320
 network_input_height: 224
+
+gt_files: ["/datasets_extra/graco/aerial-05-40m.txt", "/datasets_extra/graco/aerial-05-40m.txt", "/datasets_extra/graco/aerial-06-20m.txt", "/datasets_extra/graco/aerial-07-25m.txt"]

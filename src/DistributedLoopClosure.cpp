@@ -102,6 +102,12 @@ void DistributedLoopClosure::processBow(
   for (const auto& msg : query_msg->queries) {
     lcd::RobotId robot_id = msg.robot_id;
     lcd::PoseId pose_id = msg.pose_id;
+
+    CHECK_NE(msg.header.stamp.toNSec(), 0);
+
+    pose_timestamp_map_[lcd::RobotPoseId(robot_id, pose_id)] =
+        msg.header.stamp.toNSec();
+
     // This robot is responsible for detecting loop closures with others with a larger
     // ID
     CHECK_GE(robot_id, config_.my_id_);
@@ -561,6 +567,8 @@ void DistributedLoopClosure::detectLoopSpin() {
   std::unique_lock<std::mutex> bow_lock(bow_msgs_mutex_);
   int num_detection_performed = 0;
 
+  rerun_visualizer_->updatePoseTimestampMap(pose_timestamp_map_);
+  rerun_visualizer_->visualizeGTTrajectories();
   while (num_detection_performed < config_.detection_batch_size_) {
     if (bow_msgs_.empty()) {
       break;

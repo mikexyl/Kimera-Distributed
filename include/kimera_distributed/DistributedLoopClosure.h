@@ -90,6 +90,7 @@ class DistributedLoopClosure {
   // Keep track of BoW vectors requested by other robots
   std::map<lcd::RobotId, std::set<lcd::PoseId>> requested_bows_;
   std::mutex requested_bows_mutex_;
+  std::map<lcd::RobotPoseId, uint64_t> pose_timestamp_map_;
 
   // Keep track of VLC frames requested by other robots
   std::map<lcd::RobotId, std::set<lcd::PoseId>> requested_frames_;

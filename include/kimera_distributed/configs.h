@@ -6,11 +6,13 @@
 
 #pragma once
 
+#include <kimera_multi_lcd/types.h>
+
 #include <map>
 #include <string>
 #include <vector>
 
-#include <kimera_multi_lcd/types.h>
+#include "kimera_distributed/SubmapAtlas.h"
 
 namespace kimera_distributed {
 
@@ -45,6 +47,8 @@ struct DistributedLoopClosureConfig {
 
   // Robot names
   std::map<size_t, std::string> robot_names_;
+
+  std::vector<std::string> gt_files_;
 };
 
 }  // namespace kimera_distributed
