@@ -363,7 +363,8 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
    * @param frame2 The second VLCFrame
    * @param matches Vector of pairs (index in frame1, index in frame2)
    */
-  void visualizeMatchesKeypoints(lcd::VLCFrame* frame1,
+  void visualizeMatchesKeypoints(const std::string& entity,
+                                 lcd::VLCFrame* frame1,
                                  lcd::VLCFrame* frame2,
                                  const std::vector<unsigned int>& match1,
                                  const std::vector<unsigned int>& match2) override {
@@ -375,7 +376,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
       origins.push_back({kp1.x, kp1.y});
       vectors.push_back({kp2.x - kp1.x, kp2.y - kp1.y});
     }
-    this->rec()->log("keypoint_arrows",
+    this->rec()->log(entity,
                      rerun::Arrows2D::from_vectors(vectors)
                          .with_origins(origins)
                          .with_radii({rerun::components::Radius::ui_points(1)})
@@ -448,12 +449,8 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
 
     KeyVector keys;
 
-    LOG(INFO) << "Visualizing candidates for query "
-              << "(" << query_id.first << ", " << query_id.second << "), with "
-              << candidate_ids.size() << " candidates.";
-
     // Tolerance for timestamp matching: 50 ms (in nanoseconds)
-    const uint64_t kToleranceNs = static_cast<uint64_t>(0.05 * 1e9);
+    const uint64_t kToleranceNs = static_cast<uint64_t>(1000 * 1e9);
 
     // Helper lambda to find closest GT timestamp within tolerance
     auto find_closest_gt =
