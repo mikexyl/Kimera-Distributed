@@ -575,6 +575,10 @@ void DistributedLoopClosure::detectLoopSpin() {
     }
     const pose_graph_tools_msgs::BowQuery msg = bow_msgs_.front();
     bow_msgs_.pop();
+    if (msg.bow_vector.word_values.empty()) {
+      // when using sequential descriptors, some frames may be empty
+      continue;
+    }
     lcd::RobotId query_robot = msg.robot_id;
     lcd::PoseId query_pose = msg.pose_id;
     lcd::RobotPoseId query_vertex(query_robot, query_pose);
@@ -587,13 +591,16 @@ void DistributedLoopClosure::detectLoopSpin() {
       LOG(INFO) << "Received initial BoW from robot " << query_robot << " (pose "
                 << query_pose << ").";
       lcd_->addGlobalDesc(query_vertex, global_desc);
-    } else if (!lcd_->findPreviousGlobalDesc(query_vertex)) {
-      // We cannot detect loop since the BoW of previous frame is missing
-      // (Recall we need that to compute nss factor)
-      // In this case we skip the message and try again later
-      // ROS_WARN("Cannot detect loop for (%zu,%zu) because previous BoW is missing.",
-      //           query_robot, query_pose);
-    } else {
+    }
+    // } else if (!lcd_->findPreviousGlobalDesc(query_vertex)) {
+    //   // We cannot detect loop since the BoW of previous frame is missing
+    //   // (Recall we need that to compute nss factor)
+    //   // In this case we skip the message and try again later
+    //   // ROS_WARN("Cannot detect loop for (%zu,%zu) because previous BoW is
+    //   missing.",
+    //   //           query_robot, query_pose);
+    // }
+    else {
       // We are ready to detect loop for this query message
       // ROS_INFO("Detect loop for (%zu,%zu).", query_robot, query_pose);
       detectLoop(query_vertex, global_desc);
@@ -635,50 +642,7 @@ void DistributedLoopClosure::detectLoop(
 
           {  // start candidate critical section. Add to candidate for request
             std::unique_lock<std::mutex> candidate_lock(candidate_lc_mutex_);
-            // Avoid adding repeated loop-closure candidates. Repeated means there
-            // already exists a candidate or queued verification with both source and
-            // destination poses within +/- kRepeatWindow frames.
-            const int kRepeatWindow = 10;
-            bool is_repeated = false;
-
-            // Check existing unresolved candidates for this robot.
-            for (const auto& existing : candidate_lc_.at(robot_query)) {
-              const int src_diff = std::abs((int)existing.vertex_src_.second -
-                                            (int)potential_edge.vertex_src_.second);
-              const int dst_diff = std::abs((int)existing.vertex_dst_.second -
-                                            (int)potential_edge.vertex_dst_.second);
-              if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
-                is_repeated = true;
-                break;
-              }
-            }
-
-            // Also check already-queued candidates awaiting verification.
-            if (!is_repeated) {
-              std::queue<lcd::PotentialVLCEdge> qcopy = queued_lc_;
-              while (!qcopy.empty()) {
-                const auto& existing = qcopy.front();
-                const int src_diff = std::abs((int)existing.vertex_src_.second -
-                                              (int)potential_edge.vertex_src_.second);
-                const int dst_diff = std::abs((int)existing.vertex_dst_.second -
-                                              (int)potential_edge.vertex_dst_.second);
-                if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
-                  is_repeated = true;
-                  break;
-                }
-                qcopy.pop();
-              }
-            }
-
-            if (!is_repeated) {
-              candidate_lc_.at(robot_query).push_back(potential_edge);
-            } else {
-              VLOG(2) << "Skipping repeated candidate LC for ("
-                      << potential_edge.vertex_src_.first << ","
-                      << potential_edge.vertex_src_.second << ")-("
-                      << potential_edge.vertex_dst_.first << ","
-                      << potential_edge.vertex_dst_.second << ")";
-            }
+            candidate_lc_.at(robot_query).push_back(potential_edge);
           }  // end candidate critical section
         }
       }
@@ -696,43 +660,7 @@ void DistributedLoopClosure::detectLoop(
           {
             // start candidate critical section. Add to candidate for request
             std::unique_lock<std::mutex> candidate_lock(candidate_lc_mutex_);
-            // Avoid adding repeated loop-closure candidates (see above block).
-            const int kRepeatWindow = 10;
-            bool is_repeated = false;
-            for (const auto& existing : candidate_lc_.at(robot_query)) {
-              const int src_diff = std::abs((int)existing.vertex_src_.second -
-                                            (int)potential_edge.vertex_src_.second);
-              const int dst_diff = std::abs((int)existing.vertex_dst_.second -
-                                            (int)potential_edge.vertex_dst_.second);
-              if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
-                is_repeated = true;
-                break;
-              }
-            }
-            if (!is_repeated) {
-              std::queue<lcd::PotentialVLCEdge> qcopy = queued_lc_;
-              while (!qcopy.empty()) {
-                const auto& existing = qcopy.front();
-                const int src_diff = std::abs((int)existing.vertex_src_.second -
-                                              (int)potential_edge.vertex_src_.second);
-                const int dst_diff = std::abs((int)existing.vertex_dst_.second -
-                                              (int)potential_edge.vertex_dst_.second);
-                if (src_diff <= kRepeatWindow && dst_diff <= kRepeatWindow) {
-                  is_repeated = true;
-                  break;
-                }
-                qcopy.pop();
-              }
-            }
-            if (!is_repeated) {
-              candidate_lc_.at(robot_query).push_back(potential_edge);
-            } else {
-              VLOG(2) << "Skipping repeated candidate LC for ("
-                      << potential_edge.vertex_src_.first << ","
-                      << potential_edge.vertex_src_.second << ")-("
-                      << potential_edge.vertex_dst_.first << ","
-                      << potential_edge.vertex_dst_.second << ")";
-            }
+            candidate_lc_.at(robot_query).push_back(potential_edge);
           }  // end candidate critical section
         }
       }
@@ -741,6 +669,7 @@ void DistributedLoopClosure::detectLoop(
 }
 
 void DistributedLoopClosure::verifyLoopSpin() {
+  LOG_IF(INFO, queued_lc_.empty()) << "No loop closures to verify.";
   while (queued_lc_.size() > 0) {
     VLOG(1) << "Verifying loop closures (" << queued_lc_.size() << " in the queue).";
     // Attempt to detect a single loop closure

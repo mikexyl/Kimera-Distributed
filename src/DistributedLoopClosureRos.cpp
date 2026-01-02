@@ -102,12 +102,17 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
 
   ros::param::get("~detection_batch_size", config.detection_batch_size_);
   ros::param::get("~bow_skip_num", config.bow_skip_num_);
+
+  CHECK_EQ(config.bow_skip_num_, 1) << "disable bow skip for now";
+
   // Load parameters controlling VLC communication
   ros::param::get("~bow_batch_size", config.bow_batch_size_);
   ros::param::get("~vlc_batch_size", config.vlc_batch_size_);
   ros::param::get("~loop_batch_size", config.loop_batch_size_);
   ros::param::get("~comm_sleep_time", config.comm_sleep_time_);
   ros::param::get("~loop_sync_sleep_time", config.loop_sync_sleep_time_);
+
+  ros::param::get("~min_sim_vlad", config.lcd_params_.min_sim_vlad);
 
   // TF
   if (!ros::param::get("~latest_kf_frame_id", latest_kf_frame_id_)) {
@@ -401,7 +406,16 @@ void DistributedLoopClosureRos::bowCallback(
 
 void DistributedLoopClosureRos::localPoseGraphCallback(
     const pose_graph_tools_msgs::PoseGraph::ConstPtr& msg) {
+  LOG(INFO) << "Received local pose graph with " << msg->nodes.size() << " nodes and "
+            << msg->edges.size() << " edges.";
+  if (msg->edges.size() > 0) {
+    LOG(INFO) << "First edge between keyframe " << msg->edges[0].key_from << " and "
+              << msg->edges[0].key_to;
+  }
   bool incremental_pub = processLocalPoseGraph(msg);
+  LOG(INFO) << "Processed local pose graph. submap atlas now has "
+            << submap_atlas_->numSubmaps() << " submaps and total of "
+            << submap_atlas_->numKeyframes() << " keyframes.";
 
   // Publish sparsified pose graph
   pose_graph_tools_msgs::PoseGraph sparse_pose_graph =
@@ -559,6 +573,7 @@ void DistributedLoopClosureRos::runVerification() {
   ros::WallRate r(1);
   while (ros::ok() && !should_shutdown_) {
     if (queued_lc_.empty()) {
+      LOG(INFO) << "No loop to verify, verification thread sleeping.";
       r.sleep();
     } else {
       verifyLoopSpin();
@@ -568,11 +583,14 @@ void DistributedLoopClosureRos::runVerification() {
 
 void DistributedLoopClosureRos::runComms() {
   while (ros::ok() && !should_shutdown_) {
+    LOG(INFO) << "Communication thread awake.";
     // Request missing Bow vectors from other robots
     requestBowVectors();
+    LOG(INFO) << "Requested missing BoW vectors.";
 
     // Request VLC frames from other robots
     size_t total_candidates = updateCandidateList();
+    LOG(INFO) << "Total VLC frame requests to make: " << total_candidates;
     if (total_candidates > 0) {
       requestFrames();
     }
@@ -697,6 +715,9 @@ void DistributedLoopClosureRos::requestFrames() {
   lcd::RobotPoseIdSet my_vertex_ids, target_vertex_ids;
   lcd::RobotId target_robot_id;
   queryFramesRequest(my_vertex_ids, target_robot_id, target_vertex_ids);
+
+  LOG(INFO) << "Requesting VLC frames from self " << my_vertex_ids.size()
+            << " and from robot " << target_robot_id << " " << target_vertex_ids.size();
 
   // Process missing VLC frames of myself
   if (my_vertex_ids.size() > 0) {

@@ -41,4 +41,6 @@ lcd_min_matched_features: 30
 network_input_width: 320
 network_input_height: 224
 
+min_sim_vlad: 0.7
+
 gt_files: ["/datasets_extra/graco/aerial-05-40m.txt", "/datasets_extra/graco/aerial-05-40m.txt", "/datasets_extra/graco/aerial-06-20m.txt", "/datasets_extra/graco/aerial-07-25m.txt", "/datasets_extra/graco/aerial-08-25m.txt"]

@@ -450,7 +450,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
     KeyVector keys;
 
     // Tolerance for timestamp matching: 50 ms (in nanoseconds)
-    const uint64_t kToleranceNs = static_cast<uint64_t>(1000 * 1e9);
+    const uint64_t kToleranceNs = static_cast<uint64_t>(0.05 * 1e9);
 
     // Helper lambda to find closest GT timestamp within tolerance
     auto find_closest_gt =
