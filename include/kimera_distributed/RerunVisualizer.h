@@ -113,6 +113,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
     std::string gt_file = "";
     std::optional<std::string> recording_id = std::nullopt;
     std::string result_dir = "rerun_results";
+    std::string robot_name = "robot";
   };
 
   RerunVisualizer(const Params& params)
@@ -120,20 +121,23 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
                         params.base_link_frame_id,
                         params.odom_frame_id,
                         params.map_frame_id,
+                        params.robot_name,
                         params.recording_id) {}
 
   RerunVisualizer(std::string entity_prefix,
                   std::string base_link_frame_id = "baselink",
                   std::string odom_frame_id = "odom",
                   std::string map_frame_id = "map",
+                  std::string robot_name = "robot",
                   std::optional<std::string> recording_id = std::nullopt)
       : aria::viz::VisualizerRerun(
-            aria::viz::VisualizerRerun::Params("kimera_distributed",
+            aria::viz::VisualizerRerun::Params("code-slam",
                                                recording_id,
                                                "rerun+http://172.17.0.1:9876/proxy")),
         baselink_(base_link_frame_id),
-        map_(map_frame_id),
-        odom_(odom_frame_id) {
+        map_("/distributed/" + robot_name + "/" + map_frame_id),
+        odom_(odom_frame_id),
+        robot_name_(robot_name) {
     // draw the origin frame for visualization
     this->drawTf(map_, Pose3::Identity(), 0.3, true);
 
@@ -350,7 +354,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
       vectors.push_back({static_cast<float>(versors2[i].x() - versors1[i].x()),
                          static_cast<float>(versors2[i].y() - versors1[i].y())});
     }
-    this->rec()->log("versor_arrows",
+    this->rec()->log((robot_name_ + "/versor_arrows").c_str(),
                      rerun::Arrows2D::from_vectors(vectors)
                          .with_origins(origins)
                          .with_radii({rerun::components::Radius::ui_points(1)})
@@ -433,8 +437,12 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
       }
       points.push_back(key_value.value.cast<Pose3>().translation());
     }
-    this->drawPoints(
-        "gt/trajectories", points, aria::viz::ColorMap::kGray, {1.0f}, {}, true);
+    this->drawPoints((robot_name_ + "/gt/trajectories").c_str(),
+                     points,
+                     aria::viz::ColorMap::kGray,
+                     {1.0f},
+                     {},
+                     true);
   }
 
   void visualizeCandidates(std::string name,
@@ -519,8 +527,8 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
     for (const auto& key : keys) {
       gt_points.push_back(gt_trajectories_.at<gtsam::Pose3>(key).translation());
     }
-    std::string entry =
-        fmt::format("gt/{}-{}/{}", query_id.first, candidate_ids[0].first, name);
+    std::string entry = fmt::format(
+        "{}/gt/{}-{}/{}", robot_name_, query_id.first, candidate_ids[0].first, name);
     std::vector<std::string> labels;
     labels.push_back("q");
     for (const auto& score : candidate_scores) {
@@ -547,6 +555,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
   std::filesystem::path baselink_;
   std::filesystem::path map_;
   std::filesystem::path odom_;
+  std::string robot_name_;
 
   std::mutex rerun_mutex_;
 

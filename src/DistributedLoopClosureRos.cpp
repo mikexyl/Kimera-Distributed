@@ -145,16 +145,17 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   std::tm now_tm = *std::localtime(&now_c);
   char time_str[5];
   std::strftime(time_str, sizeof(time_str), "%H%M", &now_tm);
-  std::string record_id = "dlcd" + std::string(time_str);
 
   std::vector<std::string> gt_files;
   ros::param::get("~gt_files", gt_files);
 
-  rerun_visualizer_ =
-      std::make_shared<RerunVisualizer>(config.robot_names_.at(config.my_id_),
-                                        config.robot_names_.at(config.my_id_),
-                                        odom_frame_id_,
-                                        world_frame_id_);
+  rerun_visualizer_ = std::make_shared<RerunVisualizer>(
+      "distributed/" + config.robot_names_.at(config.my_id_),
+      config.robot_names_.at(config.my_id_),
+      odom_frame_id_,
+      world_frame_id_,
+      config.robot_names_.at(config.my_id_),
+      time_str);
 
   for (int i = 0; i < gt_files.size(); i++) {
     rerun_visualizer_->loadGTTrajectory(gt_files[i], i);

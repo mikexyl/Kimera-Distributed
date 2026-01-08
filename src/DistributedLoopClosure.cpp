@@ -99,6 +99,7 @@ void DistributedLoopClosure::initialize(const DistributedLoopClosureConfig& conf
 
 void DistributedLoopClosure::processBow(
     const pose_graph_tools_msgs::BowQueriesConstPtr& query_msg) {
+  LOG(INFO) << "Processing " << query_msg->queries.size() << " BoW queries.";
   for (const auto& msg : query_msg->queries) {
     lcd::RobotId robot_id = msg.robot_id;
     lcd::PoseId pose_id = msg.pose_id;
@@ -602,7 +603,6 @@ void DistributedLoopClosure::detectLoopSpin() {
     // }
     else {
       // We are ready to detect loop for this query message
-      // ROS_INFO("Detect loop for (%zu,%zu).", query_robot, query_pose);
       detectLoop(query_vertex, global_desc);
       num_detection_performed++;
       // Inter-robot queries will count as communication payloads
@@ -611,8 +611,6 @@ void DistributedLoopClosure::detectLoopSpin() {
             kimera_multi_lcd::computeBowQueryPayloadBytes(msg));
       }
       lcd_->addGlobalDesc(query_vertex, global_desc);
-      LOG(INFO) << "processed " << num_detection_performed << " loop detections, "
-                << bow_msgs_.size() << " remaining in the queue.";
     }
   }
   // if (!bow_msgs_.empty()) {
