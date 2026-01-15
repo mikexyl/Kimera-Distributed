@@ -501,7 +501,12 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
                  << query_id.second << ")";
     }
     auto opt_query_sym = find_closest_gt(it_query_ts->second);
-    CHECK(opt_query_sym);
+    if (not opt_query_sym) {
+      LOG(WARNING) << "Could not find GT match for query timestamp: "
+                   << it_query_ts->second << ". First gt timestamp: "
+                   << (gt_timestamps_.empty() ? 0 : gt_timestamps_.begin()->first);
+      return;
+    }
     keys.push_back(*opt_query_sym);
 
     for (const auto& candidate_id : candidate_ids) {
@@ -517,7 +522,7 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
       if (opt_cand_sym && opt_query_sym) {
         keys.push_back(*opt_cand_sym);
       } else {
-        LOG(FATAL) << "Could not find GT match for candidate or query timestamp."
+        LOG(WARNING) << "Could not find GT match for candidate or query timestamp."
                    << " Candidate ts: " << it_cand_ts->second
                    << ", Query ts: " << it_query_ts->second << "first gt timestamp: "
                    << (gt_timestamps_.empty() ? 0 : gt_timestamps_.begin()->first);

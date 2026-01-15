@@ -82,6 +82,7 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
                   config.lcd_params_.geometric_verification_min_inlier_count_);
   ros::param::get("~geometric_verification_min_inlier_percentage",
                   config.lcd_params_.geometric_verification_min_inlier_percentage_);
+  ros::param::get("~avg_focal_length", config.lcd_params_.avg_focal_length_);
   ros::param::get("~detect_interrobot_only", config.lcd_params_.inter_robot_only_);
 
   ros::param::get("~vocabulary_path", config.lcd_params_.vocab_path_);
