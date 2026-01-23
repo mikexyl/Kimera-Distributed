@@ -9,6 +9,8 @@
 #include <DBoW2/DBoW2.h>
 #include <glog/logging.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/nonlinear/LevenbergMarquardtOptimizer.h>
+#include <gtsam/slam/InitializePose3.h>
 #include <kimera_multi_lcd/utils.h>
 #include <pose_graph_tools_msgs/PoseGraph.h>
 #include <pose_graph_tools_msgs/VLCFrameQuery.h>
@@ -23,6 +25,7 @@
 #include <random>
 #include <string>
 
+#include "kimera_distributed/Submap.h"
 #include "kimera_distributed/configs.h"
 
 namespace kimera_distributed {
@@ -174,8 +177,8 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   initialize(config);
 
   // Subscriber
-  std::string topic = "/" + config_.robot_names_[config_.my_id_] +
-                      "/kimera_vio_ros/pose_graph_incremental";
+  std::string topic =
+      "/" + config_.robot_names_[config_.my_id_] + "/kimera_vio_ros/pose_graph";
   local_pg_sub_ = nh_.subscribe(
       topic, 1000, &DistributedLoopClosureRos::localPoseGraphCallback, this);
 
@@ -420,8 +423,7 @@ void DistributedLoopClosureRos::localPoseGraphCallback(
             << submap_atlas_->numKeyframes() << " keyframes.";
 
   // Publish sparsified pose graph
-  pose_graph_tools_msgs::PoseGraph sparse_pose_graph =
-      getSubmapPoseGraph(incremental_pub);
+  pose_graph_tools_msgs::PoseGraph sparse_pose_graph = getSubmapPoseGraph(false);
   if (!sparse_pose_graph.edges.empty() || !sparse_pose_graph.nodes.empty()) {
     pose_graph_pub_.publish(sparse_pose_graph);
   }
@@ -757,7 +759,7 @@ bool DistributedLoopClosureRos::requestPoseGraphCallback(
     pose_graph_tools_msgs::PoseGraphQuery::Request& request,
     pose_graph_tools_msgs::PoseGraphQuery::Response& response) {
   CHECK_EQ(request.robot_id, config_.my_id_);
-  response.pose_graph = getSubmapPoseGraph();
+  response.pose_graph = getSubmapPoseGraph(false);
 
   if (config_.run_offline_) {
     if (!offline_keyframe_loop_closures_.empty()) {
@@ -1009,6 +1011,7 @@ bool DistributedLoopClosureRos::requestVLCFrameService(
   }
 
   // Parse response
+  size_t n_accepted_frames{0};
   for (const auto& frame_msg : query.response.frames) {
     lcd::VLCFrame frame;
     kimera_multi_lcd::VLCFrameFromMsg(frame_msg, &frame);
@@ -1026,8 +1029,11 @@ bool DistributedLoopClosureRos::requestVLCFrameService(
       frame.submap_id_ = CHECK_NOTNULL(keyframe->getSubmap())->id();
       frame.T_submap_pose_ = keyframe->getPoseInSubmapFrame();
       lcd_->addVLCFrame(vertex_id, frame);
+      n_accepted_frames++;
     }  // end lcd critical section
   }
+  LOG(INFO) << "accepted " << n_accepted_frames << "/" << query.response.frames.size()
+            << " frames";
   return true;
 }
 

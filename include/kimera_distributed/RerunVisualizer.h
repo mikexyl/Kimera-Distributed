@@ -2,6 +2,7 @@
 
 #include <aria_viz/visualizer_rerun.h>
 #include <glog/logging.h>
+#include <gtsam/geometry/Pose3.h>
 #include <gtsam/slam/dataset.h>
 #include <log4cxx/appenderskeleton.h>
 #include <log4cxx/helpers/stringhelper.h>
@@ -11,6 +12,7 @@
 #include <chrono>
 #include <future>
 
+#include "kimera_distributed/SubmapAtlas.h"
 #include "kimera_multi_lcd/visualizer.h"
 
 namespace kimera_distributed {
@@ -445,6 +447,16 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
                      true);
   }
 
+  void visualizeTrajectory(SubmapAtlas* atlas) {
+    // visualize all keyframes
+    std::vector<Pose3> values;
+    for (int i = 0; i < atlas->numKeyframes(); i++) {
+      CHECK(atlas->hasKeyframe(i));
+      values.push_back(atlas->getKeyframe(i)->getPoseInOdomFrame());
+    }
+    this->drawTrajectory((robot_name_ + "/trajectory").c_str(), values);
+  }
+
   void visualizeCandidates(std::string name,
                            const lcd::RobotPoseId& query_id,
                            const std::vector<lcd::RobotPoseId>& candidate_ids,
@@ -523,9 +535,9 @@ class RerunVisualizer : public aria::viz::VisualizerRerun,
         keys.push_back(*opt_cand_sym);
       } else {
         LOG(WARNING) << "Could not find GT match for candidate or query timestamp."
-                   << " Candidate ts: " << it_cand_ts->second
-                   << ", Query ts: " << it_query_ts->second << "first gt timestamp: "
-                   << (gt_timestamps_.empty() ? 0 : gt_timestamps_.begin()->first);
+                     << " Candidate ts: " << it_cand_ts->second
+                     << ", Query ts: " << it_query_ts->second << "first gt timestamp: "
+                     << (gt_timestamps_.empty() ? 0 : gt_timestamps_.begin()->first);
       }
     }
     std::vector<gtsam::Point3> gt_points;

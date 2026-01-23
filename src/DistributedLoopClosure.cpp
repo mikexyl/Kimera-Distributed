@@ -12,6 +12,7 @@
 #include <kimera_multi_lcd/io.h>
 #include <kimera_multi_lcd/utils.h>
 #include <pose_graph_tools_msgs/PoseGraph.h>
+#include <pose_graph_tools_msgs/PoseGraphEdge.h>
 #include <pose_graph_tools_msgs/VLCFrameQuery.h>
 #include <pose_graph_tools_ros/utils.h>
 
@@ -164,39 +165,25 @@ bool DistributedLoopClosure::processLocalPoseGraph(
     node_timestamps[(int)pg_node.key] = pg_node.header.stamp.toNSec();
   }
 
+  size_t n_non_odom{0}, n_non_local{0};
+
+  std::vector<pose_graph_tools_msgs::PoseGraphEdge> odom_edges;
+
   for (const auto& pg_edge : msg->edges) {
+    if (not(pg_edge.robot_from == config_.my_id_ &&
+            pg_edge.robot_to == config_.my_id_)) {
+      n_non_local++;
+    }
+    if (pg_edge.type != pose_graph_tools_msgs::PoseGraphEdge::ODOM) {
+      n_non_odom++;
+    }
+
     if (pg_edge.robot_from == config_.my_id_ && pg_edge.robot_to == config_.my_id_ &&
         pg_edge.type == pose_graph_tools_msgs::PoseGraphEdge::ODOM) {
       int frame_src = (int)pg_edge.key_from;
       int frame_dst = (int)pg_edge.key_to;
       CHECK_EQ(frame_src + 1, frame_dst);
-      if (submap_atlas_->hasKeyframe(frame_src) &&
-          !submap_atlas_->hasKeyframe(frame_dst)) {
-        // Start submap critical section
-        // std::unique_lock<std::mutex> submap_lock(submap_atlas_mutex_);
-        // Check that the next keyframe has the expected id
-        int expected_frame_id = submap_atlas_->numKeyframes();
-        if (frame_dst != expected_frame_id) {
-          LOG(ERROR) << "Received unexpected keyframe! (received " << frame_dst
-                     << ", expected " << expected_frame_id << ")";
-        }
-
-        // Use odometry to initialize the next keyframe
-        lcd::VLCEdge keyframe_odometry;
-        kimera_multi_lcd::VLCEdgeFromMsg(pg_edge, &keyframe_odometry);
-        const auto T_src_dst = keyframe_odometry.T_src_dst_;
-        const auto T_odom_src =
-            submap_atlas_->getKeyframe(frame_src)->getPoseInOdomFrame();
-        const auto T_odom_dst = T_odom_src * T_src_dst;
-        uint64_t node_ts = ts;
-        if (node_timestamps.find(frame_dst) != node_timestamps.end())
-          node_ts = node_timestamps[frame_dst];
-        submap_atlas_->createKeyframe(frame_dst, T_odom_dst, node_ts);
-
-        // Save keyframe pose to file
-        gtsam::Symbol symbol_dst(robot_id_to_prefix.at(config_.my_id_), frame_dst);
-        logOdometryPose(symbol_dst, T_odom_dst, node_ts);
-      }
+      odom_edges.push_back(pg_edge);
     } else if (pg_edge.robot_from == config_.my_id_ &&
                pg_edge.robot_to == config_.my_id_ &&
                pg_edge.type == pose_graph_tools_msgs::PoseGraphEdge::LOOPCLOSE) {
@@ -204,8 +191,67 @@ bool DistributedLoopClosure::processLocalPoseGraph(
     }
   }
 
+  // process odometry edges
+  std::stringstream ss;
+  for (size_t j = 0; j < odom_edges.size(); j++) {
+    ss << odom_edges[j].key_from << " -> " << odom_edges[j].key_to << "\n";
+  }
+  for (size_t i = 0; i < odom_edges.size(); i++) {
+    const auto& pg_edge = odom_edges[i];
+    if (i > 0) {
+      // check if the odom edges are continuous
+      const auto& prev_pg_edge = odom_edges[i - 1];
+      if (prev_pg_edge.key_to != pg_edge.key_from) {
+        LOG(FATAL) << "Odom edges are not continuous\n" << ss.str();
+      }
+    } else {
+      if (pg_edge.key_from != 0) {
+        LOG(FATAL) << "Odom edges are not continuous\n" << ss.str();
+      }
+    }
+
+    int frame_src = (int)pg_edge.key_from;
+    int frame_dst = (int)pg_edge.key_to;
+    if (submap_atlas_->hasKeyframe(frame_src)) {
+      // Start submap critical section
+      // std::unique_lock<std::mutex> submap_lock(submap_atlas_mutex_);
+      // Check that the next keyframe has the expected id
+      int expected_frame_id = submap_atlas_->numKeyframes();
+
+      // Use odometry to initialize the next keyframe
+      lcd::VLCEdge keyframe_odometry;
+      kimera_multi_lcd::VLCEdgeFromMsg(pg_edge, &keyframe_odometry);
+      const auto T_src_dst = keyframe_odometry.T_src_dst_;
+      const auto T_odom_src =
+          submap_atlas_->getKeyframe(frame_src)->getPoseInOdomFrame();
+      const auto T_odom_dst = T_odom_src * T_src_dst;
+      uint64_t node_ts = ts;
+      if (node_timestamps.find(frame_dst) != node_timestamps.end())
+        node_ts = node_timestamps[frame_dst];
+
+      CHECK_EQ(submap_atlas_->numSubmaps(),
+               submap_atlas_->numKeyframes(),
+               "submap effectively removed for now");
+      if (!submap_atlas_->hasKeyframe(frame_dst)) {
+        submap_atlas_->createKeyframe(frame_dst, T_odom_dst, node_ts);
+      } else {
+        incremental_pub = false;
+        submap_atlas_->getKeyframe(frame_dst)->setPoseInOdomFrame(T_odom_dst);
+        submap_atlas_->getSubmap(frame_dst)->setPoseInOdomFrame(T_odom_dst);
+      }
+
+      // Save keyframe pose to file
+      gtsam::Symbol symbol_dst(robot_id_to_prefix.at(config_.my_id_), frame_dst);
+      logOdometryPose(symbol_dst, T_odom_dst, node_ts);
+    }
+  }
+
+  LOG(INFO) << "processed edges: " << n_non_local << "/" << n_non_odom << "/"
+            << msg->edges.size();
+
   // Parse intra-robot loop closures
   for (const auto& pg_edge : local_loop_closures) {
+    LOG(FATAL) << "removed";
     // Read loop closure between the keyframes
     lcd::VLCEdge keyframe_loop_closure;
     kimera_multi_lcd::VLCEdgeFromMsg(pg_edge, &keyframe_loop_closure);

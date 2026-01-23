@@ -3,6 +3,7 @@
 //
 
 #include "kimera_distributed/SubmapAtlas.h"
+
 #include <glog/logging.h>
 #include <ros/console.h>
 
@@ -63,10 +64,12 @@ std::shared_ptr<Keyframe> SubmapAtlas::getKeyframeFromStamp(const uint64_t& time
                                                             const uint64_t& tolNs) {
   int best_keyframe_id = 0;
   uint64_t best_stamp_diff = 2 * tolNs;
-  for (const auto& it: keyframes_) {
+  for (const auto& it : keyframes_) {
     const auto keyframe_id = it.first;
     const uint64_t keyframe_stamp = it.second->stamp();
-    const uint64_t stamp_diff = (keyframe_stamp < timestamp) ? (timestamp-keyframe_stamp) : (keyframe_stamp-timestamp);
+    const uint64_t stamp_diff = (keyframe_stamp < timestamp)
+                                    ? (timestamp - keyframe_stamp)
+                                    : (keyframe_stamp - timestamp);
     if (stamp_diff <= best_stamp_diff) {
       best_stamp_diff = stamp_diff;
       best_keyframe_id = keyframe_id;
