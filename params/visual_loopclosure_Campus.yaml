@@ -1,0 +1,52 @@
+# Yaml configuration for visual loop closure parameters
+
+detect_interrobot_only: false
+
+# Matcher parameters (DBoW2)
+alpha: 0.7
+dist_local: 30 # number of sequences
+max_db_results: 2
+min_nss_factor: 0.05
+lowe_ratio: 0.8
+min_temporal_matches: 3
+min_matches_per_island: 1
+max_intraisland_gap: 3
+max_nrFrames_between_islands: 3
+max_nrFrames_between_queries: 2
+
+# Mono RANSAC
+ransac_threshold_mono: 0.0001
+ransac_inlier_percentage_mono: 0.01
+max_ransac_iterations_mono: 1000
+
+# Stereo RANSAC
+max_ransac_iterations: 1000
+ransac_threshold: 3
+geometric_verification_min_inlier_count: 10
+geometric_verification_min_inlier_percentage: 0.0
+avg_focal_length: 617
+
+image_width: 640
+image_height: 480
+
+lcd_lg_num_features: 500
+lcd_lg_model_path: /workspaces/src/xfeat-cpp/onnx_model/lg_320x224_dyn.onnx
+lcd_faiss_index_path: ""
+xfeat_nv_head_model_path: /workspaces/src/xfeat-cpp/onnx_model/xfeat_nv_fc_512.onnx
+netvlad_model_path: /workspaces/src/xfeat-cpp/onnx_model/netvlad_fc_512.onnx
+
+local_window_size: 0
+
+lcd_min_matched_features: 30
+
+network_input_width: 320
+network_input_height: 224
+
+min_sim_vlad: 0.7
+
+gt_files:
+  [
+    "/datasets_extra/m2dgr/gate_01.txt",
+    "/datasets_extra/m2dgr/gate_02.txt",
+    "/datasets_extra/m2dgr/gate_03.txt",
+  ]
