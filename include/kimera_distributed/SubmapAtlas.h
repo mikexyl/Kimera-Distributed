@@ -7,6 +7,8 @@
 #ifndef KIMERA_DISTRIBUTED_INCLUDE_KIMERA_DISTRIBUTED_SUBMAPATLAS_H_
 #define KIMERA_DISTRIBUTED_INCLUDE_KIMERA_DISTRIBUTED_SUBMAPATLAS_H_
 
+#include <unordered_map>
+
 #include "kimera_distributed/Submap.h"
 
 namespace kimera_distributed {

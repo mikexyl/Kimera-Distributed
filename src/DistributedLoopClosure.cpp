@@ -229,15 +229,16 @@ bool DistributedLoopClosure::processLocalPoseGraph(
       if (node_timestamps.find(frame_dst) != node_timestamps.end())
         node_ts = node_timestamps[frame_dst];
 
-      CHECK_EQ(submap_atlas_->numSubmaps(),
-               submap_atlas_->numKeyframes(),
-               "submap effectively removed for now");
       if (!submap_atlas_->hasKeyframe(frame_dst)) {
         submap_atlas_->createKeyframe(frame_dst, T_odom_dst, node_ts);
       } else {
         incremental_pub = false;
-        submap_atlas_->getKeyframe(frame_dst)->setPoseInOdomFrame(T_odom_dst);
-        submap_atlas_->getSubmap(frame_dst)->setPoseInOdomFrame(T_odom_dst);
+        auto kf = submap_atlas_->getKeyframe(frame_dst);
+        kf->setPoseInOdomFrame(T_odom_dst);
+        auto T_submap_keyframe = kf->getPoseInSubmapFrame();
+        auto T_odom_kf = T_odom_dst;
+        auto T_odom_submap = T_odom_kf * T_submap_keyframe.inverse();
+        kf->getSubmap()->setPoseInOdomFrame(T_odom_submap);
       }
 
       // Save keyframe pose to file

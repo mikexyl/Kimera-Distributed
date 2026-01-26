@@ -23,8 +23,8 @@
   <arg name="loop_sync_sleep_time"    default="10" />
 
   <!-- Submap settings -->
-  <arg name="max_submap_distance"     default="0" />
-  <arg name="max_submap_size"         default="0" />
+  <arg name="max_submap_distance"     default="5" />
+  <arg name="max_submap_size"         default="10" />
 
   <!-- Offline mode -->
   <arg name="run_offline"             default="false"/>
