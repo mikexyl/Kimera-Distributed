@@ -99,9 +99,6 @@ class DistributedLoopClosure {
   // Record if robot is currently connected
   std::map<size_t, bool> robot_connected_;
 
-  // Record if loop closure publisher is initialized
-  std::map<size_t, bool> loop_pub_initialized_;
-
   // Number of updates received from back-end
   int backend_update_count_;
 

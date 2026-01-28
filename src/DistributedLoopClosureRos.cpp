@@ -210,12 +210,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
       ros::Subscriber bow_req_sub = nh_.subscribe(
           bow_req_topic, 1, &DistributedLoopClosureRos::bowRequestsCallback, this);
       bow_requests_sub_.push_back(bow_req_sub);
-
-      std::string loop_topic =
-          "/" + config_.robot_names_[id] + "/kimera_distributed/loop_closures";
-      ros::Subscriber loop_sub = nh_.subscribe(
-          loop_topic, 100, &DistributedLoopClosureRos::loopClosureCallback, this);
-      loop_sub_.push_back(loop_sub);
     }
 
     if (id >= config_.my_id_) {
@@ -234,15 +228,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
       ros::Subscriber resp_sub = nh_.subscribe(
           resp_topic, 10, &DistributedLoopClosureRos::vlcResponsesCallback, this);
       vlc_responses_sub_.push_back(resp_sub);
-
-      std::string ack_topic =
-          "/" + config_.robot_names_[id] + "/kimera_distributed/loop_ack";
-      ros::Subscriber ack_sub =
-          nh_.subscribe(ack_topic,
-                        100,
-                        &DistributedLoopClosureRos::loopAcknowledgementCallback,
-                        this);
-      loop_ack_sub_.push_back(ack_sub);
     }
   }
 
@@ -267,8 +252,8 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   bow_requests_pub_ =
       nh_.advertise<pose_graph_tools_msgs::BowRequests>(bow_request_topic, 100, true);
 
-  std::string pose_graph_topic = "/" + config_.robot_names_[config_.my_id_] +
-                                 "/kimera_distributed/pose_graph_incremental";
+  std::string pose_graph_topic =
+      "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/pose_graph";
   pose_graph_pub_ =
       nh_.advertise<pose_graph_tools_msgs::PoseGraph>(pose_graph_topic, 1000, true);
 
@@ -281,15 +266,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
       "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/vlc_requests";
   vlc_requests_pub_ =
       nh_.advertise<pose_graph_tools_msgs::VLCRequests>(req_topic, 10, true);
-
-  std::string loop_topic =
-      "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/loop_closures";
-  loop_pub_ = nh_.advertise<pose_graph_tools_msgs::LoopClosures>(loop_topic, 100, true);
-
-  std::string ack_topic =
-      "/" + config_.robot_names_[config_.my_id_] + "/kimera_distributed/loop_ack";
-  loop_ack_pub_ =
-      nh_.advertise<pose_graph_tools_msgs::LoopClosuresAck>(ack_topic, 100, true);
 
   std::string optimized_nodes_topic = "/" + config_.robot_names_[config_.my_id_] +
                                       "/kimera_distributed/optimized_nodes";
@@ -305,10 +281,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
     dpgo_frame_corrector_pub_ =
         nh_.advertise<geometry_msgs::Pose>(pose_corrector_topic, 1, true);
   }
-
-  // ROS service
-  pose_graph_request_server_ = nh_.advertiseService(
-      "request_pose_graph", &DistributedLoopClosureRos::requestPoseGraphCallback, this);
 
   log_timer_ = nh_.createTimer(
       ros::Duration(10.0), &DistributedLoopClosureRos::logTimerCallback, this);
@@ -387,12 +359,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   ROS_INFO("Robot %zu started communication thread.", config_.my_id_);
 
   start_time_ = ros::Time::now();
-  if (config_.loop_sync_sleep_time_ > 0) {
-    next_loop_sync_time_ =
-        ros::Time::now() + ros::Duration(config_.loop_sync_sleep_time_);
-  } else {
-    next_loop_sync_time_ = std::nullopt;
-  }
   next_latest_bow_pub_time_ = ros::Time::now();
 }
 
@@ -411,16 +377,7 @@ void DistributedLoopClosureRos::bowCallback(
 
 void DistributedLoopClosureRos::localPoseGraphCallback(
     const pose_graph_tools_msgs::PoseGraph::ConstPtr& msg) {
-  LOG(INFO) << "Received local pose graph with " << msg->nodes.size() << " nodes and "
-            << msg->edges.size() << " edges.";
-  if (msg->edges.size() > 0) {
-    LOG(INFO) << "First edge between keyframe " << msg->edges[0].key_from << " and "
-              << msg->edges[0].key_to;
-  }
   bool incremental_pub = processLocalPoseGraph(msg);
-  LOG(INFO) << "Processed local pose graph. submap atlas now has "
-            << submap_atlas_->numSubmaps() << " submaps and total of "
-            << submap_atlas_->numKeyframes() << " keyframes.";
 
   // Publish sparsified pose graph
   pose_graph_tools_msgs::PoseGraph sparse_pose_graph = getSubmapPoseGraph(false);
@@ -605,24 +562,6 @@ void DistributedLoopClosureRos::runComms() {
     // Publish VLC frames requested by other robots
     publishFrames();
 
-    // Publish new inter-robot loop closures, if any
-    if (next_loop_sync_time_ &&
-        ros::Time::now().toSec() > next_loop_sync_time_->toSec()) {
-      initializeLoopPublishers();
-      publishQueuedLoops();
-      // TODO: cbs doesn't need to sync loops, leave it here for now for easier
-      // adaptation
-      // LOG(FATAL) << "sync loops should never happen in CBS";
-
-      // Generate a random sleep time
-      std::random_device rd;
-      std::mt19937 gen(rd());
-      std::uniform_real_distribution<double> distribution(
-          0.5 * config_.loop_sync_sleep_time_, 1.5 * config_.loop_sync_sleep_time_);
-      double sleep_time = distribution(gen);
-      *next_loop_sync_time_ += ros::Duration(sleep_time);
-    }
-
     // Once a while publish latest BoW vector
     // This is needed for other robots to request potentially missing BoW
     if (ros::Time::now().toSec() > next_latest_bow_pub_time_.toSec()) {
@@ -752,173 +691,6 @@ void DistributedLoopClosureRos::publishFrames() {
              frames_msg.frames.size(),
              target_robot_id,
              requested_frames_[target_robot_id].size());
-  }
-}
-
-bool DistributedLoopClosureRos::requestPoseGraphCallback(
-    pose_graph_tools_msgs::PoseGraphQuery::Request& request,
-    pose_graph_tools_msgs::PoseGraphQuery::Response& response) {
-  CHECK_EQ(request.robot_id, config_.my_id_);
-  response.pose_graph = getSubmapPoseGraph(false);
-
-  if (config_.run_offline_) {
-    if (!offline_keyframe_loop_closures_.empty()) {
-      ROS_WARN(
-          "[requestPoseGraphCallback] %zu offline loop closures not yet processed.",
-          offline_keyframe_loop_closures_.size());
-      return false;
-    }
-    if (!submap_loop_closures_queue_.empty()) {
-      ROS_WARN("[requestPoseGraphCallback] %zu loop closures to be synchronized.",
-               submap_loop_closures_queue_.size());
-      return false;
-    }
-  }
-
-  return true;
-}
-
-void DistributedLoopClosureRos::initializeLoopPublishers() {
-  // Publish empty loops and acks
-  pose_graph_tools_msgs::LoopClosures loop_msg;
-  pose_graph_tools_msgs::LoopClosuresAck ack_msg;
-  loop_msg.publishing_robot_id = config_.my_id_;
-  ack_msg.publishing_robot_id = config_.my_id_;
-  for (lcd::RobotId robot_id = 0; robot_id < config_.num_robots_; ++robot_id) {
-    if (robot_id != config_.my_id_ && !loop_pub_initialized_[robot_id] &&
-        robot_connected_[robot_id]) {
-      loop_msg.destination_robot_id = robot_id;
-      loop_pub_.publish(loop_msg);
-
-      ack_msg.destination_robot_id = robot_id;
-      loop_ack_pub_.publish(ack_msg);
-
-      loop_pub_initialized_[robot_id] = true;
-    }
-  }
-}
-
-void DistributedLoopClosureRos::publishQueuedLoops() {
-  std::map<lcd::RobotId, size_t> robot_queue_sizes;
-  std::map<lcd::RobotId, pose_graph_tools_msgs::LoopClosures> msg_map;
-  auto it = submap_loop_closures_queue_.begin();
-  lcd::RobotId other_robot = 0;
-  while (it != submap_loop_closures_queue_.end()) {
-    const lcd::EdgeID& edge_id = it->first;
-    const auto& factor = it->second;
-    if (edge_id.robot_src == config_.my_id_) {
-      other_robot = edge_id.robot_dst;
-    } else {
-      other_robot = edge_id.robot_src;
-    }
-    if (other_robot == config_.my_id_) {
-      // This is a intra-robot loop closure and no need to synchronize
-      submap_loop_closures_.add(factor);
-      it = submap_loop_closures_queue_.erase(it);
-    } else {
-      // This is a inter-robot loop closure
-      if (robot_queue_sizes.find(other_robot) == robot_queue_sizes.end()) {
-        robot_queue_sizes[other_robot] = 0;
-        pose_graph_tools_msgs::LoopClosures msg;
-        msg.publishing_robot_id = config_.my_id_;
-        msg.destination_robot_id = other_robot;
-        msg_map[other_robot] = msg;
-      }
-      robot_queue_sizes[other_robot]++;
-      if (msg_map[other_robot].edges.size() < config_.loop_batch_size_) {
-        pose_graph_tools_msgs::PoseGraphEdge edge_msg;
-        edge_msg.robot_from = edge_id.robot_src;
-        edge_msg.robot_to = edge_id.robot_dst;
-        edge_msg.key_from = edge_id.frame_src;
-        edge_msg.key_to = edge_id.frame_dst;
-        edge_msg.pose = GtsamPoseToRos(factor.measured());
-        // TODO: write covariance
-        msg_map[other_robot].edges.push_back(edge_msg);
-      }
-      ++it;
-    }
-  }
-
-  // Select the connected robot with largest queue size to synchronize
-  lcd::RobotId selected_robot_id = 0;
-  size_t selected_queue_size = 0;
-  for (auto& it : robot_queue_sizes) {
-    lcd::RobotId robot_id = it.first;
-    size_t queue_size = it.second;
-    if (robot_connected_[robot_id] && queue_size >= selected_queue_size) {
-      selected_robot_id = robot_id;
-      selected_queue_size = queue_size;
-    }
-  }
-  if (selected_queue_size > 0) {
-    ROS_WARN("Published %zu loops to robot %zu.",
-             msg_map[selected_robot_id].edges.size(),
-             selected_robot_id);
-    loop_pub_.publish(msg_map[selected_robot_id]);
-  }
-}
-
-void DistributedLoopClosureRos::loopClosureCallback(
-    const pose_graph_tools_msgs::LoopClosuresConstPtr& msg) {
-  if (msg->destination_robot_id != config_.my_id_) {
-    return;
-  }
-  size_t loops_added = 0;
-  pose_graph_tools_msgs::LoopClosuresAck ack_msg;
-  ack_msg.publishing_robot_id = config_.my_id_;
-  ack_msg.destination_robot_id = msg->publishing_robot_id;
-  for (const auto& edge : msg->edges) {
-    const lcd::EdgeID submap_edge_id(
-        edge.robot_from, edge.key_from, edge.robot_to, edge.key_to);
-    // For each incoming loop closure, only add locally if does not exist
-    bool edge_exists = (submap_loop_closures_ids_.find(submap_edge_id) !=
-                        submap_loop_closures_ids_.end());
-    if (!edge_exists) {
-      loops_added++;
-      submap_loop_closures_ids_.emplace(submap_edge_id);
-      gtsam::Symbol submap_from(robot_id_to_prefix.at(edge.robot_from), edge.key_from);
-      gtsam::Symbol submap_to(robot_id_to_prefix.at(edge.robot_to), edge.key_to);
-      const auto pose = RosPoseToGtsam(edge.pose);
-      // TODO: read covariance from message
-      static const gtsam::SharedNoiseModel& noise =
-          gtsam::noiseModel::Isotropic::Variance(6, 1e-2);
-      submap_loop_closures_.add(
-          gtsam::BetweenFactor<gtsam::Pose3>(submap_from, submap_to, pose, noise));
-    }
-    // Always acknowledge all received loops
-    ack_msg.robot_src.push_back(edge.robot_from);
-    ack_msg.robot_dst.push_back(edge.robot_to);
-    ack_msg.frame_src.push_back(edge.key_from);
-    ack_msg.frame_dst.push_back(edge.key_to);
-  }
-  ROS_WARN("Received %zu loop closures from robot %i (%zu new).",
-           msg->edges.size(),
-           msg->publishing_robot_id,
-           loops_added);
-  loop_ack_pub_.publish(ack_msg);
-}
-
-void DistributedLoopClosureRos::loopAcknowledgementCallback(
-    const pose_graph_tools_msgs::LoopClosuresAckConstPtr& msg) {
-  if (msg->destination_robot_id != config_.my_id_) {
-    return;
-  }
-  size_t loops_acked = 0;
-  for (size_t i = 0; i < msg->robot_src.size(); ++i) {
-    const lcd::EdgeID edge_id(
-        msg->robot_src[i], msg->frame_src[i], msg->robot_dst[i], msg->frame_dst[i]);
-    if (submap_loop_closures_queue_.find(edge_id) !=
-        submap_loop_closures_queue_.end()) {
-      loops_acked++;
-      // Move acknowledged loop closure from queue to factor graph
-      // which will be shared with the back-end
-      submap_loop_closures_.add(submap_loop_closures_queue_.at(edge_id));
-      submap_loop_closures_queue_.erase(edge_id);
-    }
-  }
-  if (loops_acked > 0) {
-    ROS_WARN(
-        "Received %zu loop acks from robot %i.", loops_acked, msg->publishing_robot_id);
   }
 }
 

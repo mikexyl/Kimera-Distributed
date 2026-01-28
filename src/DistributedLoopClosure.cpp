@@ -9,6 +9,7 @@
 #include <DBoW2/DBoW2.h>
 #include <glog/logging.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <kimera_multi_lcd/io.h>
 #include <kimera_multi_lcd/utils.h>
 #include <pose_graph_tools_msgs/PoseGraph.h>
@@ -63,7 +64,6 @@ void DistributedLoopClosure::initialize(const DistributedLoopClosureConfig& conf
   // Load robot names and initialize candidate lc queues
   for (size_t id = 0; id < config_.num_robots_; id++) {
     candidate_lc_[id] = std::vector<lcd::PotentialVLCEdge>{};
-    loop_pub_initialized_[id] = false;
   }
 
   // Initialize LCD
@@ -100,7 +100,6 @@ void DistributedLoopClosure::initialize(const DistributedLoopClosureConfig& conf
 
 void DistributedLoopClosure::processBow(
     const pose_graph_tools_msgs::BowQueriesConstPtr& query_msg) {
-  LOG(INFO) << "Processing " << query_msg->queries.size() << " BoW queries.";
   for (const auto& msg : query_msg->queries) {
     lcd::RobotId robot_id = msg.robot_id;
     lcd::PoseId pose_id = msg.pose_id;
@@ -246,9 +245,6 @@ bool DistributedLoopClosure::processLocalPoseGraph(
       logOdometryPose(symbol_dst, T_odom_dst, node_ts);
     }
   }
-
-  LOG(INFO) << "processed edges: " << n_non_local << "/" << n_non_odom << "/"
-            << msg->edges.size();
 
   // Parse intra-robot loop closures
   for (const auto& pg_edge : local_loop_closures) {
@@ -883,7 +879,12 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
     out_graph = GtsamGraphToRos(new_loop_closures, gtsam::Values());
     last_get_lc_idx_ = submap_loop_closures_.size();
   } else {
-    out_graph = GtsamGraphToRos(submap_loop_closures_, gtsam::Values());
+    gtsam::NonlinearFactorGraph loops;
+    for (const auto& [edge_id, factor] : submap_loop_closures_queue_) {
+      loops.add(factor);
+    }
+    submap_loop_closures_queue_.clear();
+    out_graph = GtsamGraphToRos(loops, gtsam::Values());
   }
   const std::string robot_name = config_.robot_names_.at(config_.my_id_);
 

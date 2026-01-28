@@ -39,7 +39,6 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ~DistributedLoopClosureRos();
 
  private:
-
   ros::NodeHandle nh_;
   std::atomic<bool> should_shutdown_{false};
 
@@ -50,8 +49,7 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   std::vector<ros::Subscriber> bow_requests_sub_;
   std::vector<ros::Subscriber> vlc_requests_sub_;
   std::vector<ros::Subscriber> vlc_responses_sub_;
-  std::vector<ros::Subscriber> loop_sub_;
-  std::vector<ros::Subscriber> loop_ack_sub_;
+
   ros::Subscriber dpgo_sub_;
   ros::Subscriber connectivity_sub_;
   ros::Subscriber dpgo_frame_corrector_sub_;
@@ -62,20 +60,16 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ros::Publisher pose_graph_pub_;
   ros::Publisher bow_requests_pub_;
   ros::Publisher bow_response_pub_;
-  ros::Publisher loop_pub_;
-  ros::Publisher loop_ack_pub_;
+
   ros::Publisher optimized_nodes_pub_;
   ros::Publisher optimized_path_pub_;
   ros::Publisher dpgo_frame_corrector_pub_;
-
-  // ROS service
-  ros::ServiceServer pose_graph_request_server_;
 
   // Timer
   ros::Timer log_timer_;
   ros::Timer tf_timer_;
   ros::Time start_time_;
-  std::optional<ros::Time> next_loop_sync_time_;
+
   ros::Time next_latest_bow_pub_time_;
 
   // TF broadcaster from world to robot's odom frame
@@ -134,17 +128,6 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   void vlcRequestsCallback(const pose_graph_tools_msgs::VLCRequestsConstPtr& msg);
 
   /**
-   * Callback to process new inter-robot loop closures
-   */
-  void loopClosureCallback(const pose_graph_tools_msgs::LoopClosuresConstPtr& msg);
-
-  /**
-   * Callback to process new inter-robot loop closures
-   */
-  void loopAcknowledgementCallback(
-      const pose_graph_tools_msgs::LoopClosuresAckConstPtr& msg);
-
-  /**
    * @brief Callback to receive optimized submap poses from dpgo
    * @param msg
    */
@@ -181,26 +164,6 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
    * @brief Subscriber callback that listens to the list of currently connected robots
    */
   void connectivityCallback(const std_msgs::UInt16MultiArrayConstPtr& msg);
-
-  /**
-   * @brief Send submap-level pose graph for distributed optimization
-   * @param request
-   * @param response
-   * @return
-   */
-  bool requestPoseGraphCallback(
-      pose_graph_tools_msgs::PoseGraphQuery::Request& request,
-      pose_graph_tools_msgs::PoseGraphQuery::Response& response);
-
-  /**
-   * Initialize loop closures
-   */
-  void initializeLoopPublishers();
-
-  /**
-   * Publish queued loop closures to be synchronized with other robots
-   */
-  void publishQueuedLoops();
 
   /**
    * Publish VLC requests
