@@ -31,6 +31,10 @@ void Submap::setPoseInWorldFrame(const gtsam::Pose3& T_world_submap) {
 }
 
 void Submap::addKeyframe(const std::shared_ptr<Keyframe>& keyframe) {
+  // Set anchor keyframe if this is the first keyframe
+  if (!anchor_keyframe_) {
+    anchor_keyframe_ = keyframe;
+  }
   keyframes_.emplace(keyframe->id(), keyframe);
   // Update distance
   const auto keyframe_prev = getKeyframe(keyframe->id() - 1);
@@ -56,5 +60,7 @@ std::unordered_set<int> Submap::getKeyframeIDs() const {
   for (const auto& it : keyframes_) keyframe_ids.emplace(it.first);
   return keyframe_ids;
 }
+
+std::shared_ptr<Keyframe> Submap::getAnchorKeyframe() const { return anchor_keyframe_; }
 
 }  // namespace kimera_distributed

@@ -68,6 +68,7 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   // Timer
   ros::Timer log_timer_;
   ros::Timer tf_timer_;
+  ros::Timer pose_graph_pub_timer_;
   ros::Time start_time_;
 
   ros::Time next_latest_bow_pub_time_;
@@ -136,6 +137,11 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
    * @brief Callback to timer used for periodically publishing TF
    */
   void tfTimerCallback(const ros::TimerEvent& event);
+
+  /**
+   * @brief Callback to timer used for periodically updating and publishing pose graph
+   */
+  void poseGraphPubTimerCallback(const ros::TimerEvent& event);
 
   /**
    * @brief Subscriber callback that listens to the list of currently connected robots

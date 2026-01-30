@@ -8,9 +8,11 @@
 #define KIMERA_DISTRIBUTED_INCLUDE_KIMERA_DISTRIBUTED_SUBMAP_H_
 
 #include <gtsam/geometry/Pose3.h>
+
 #include <memory>
 #include <unordered_map>
 #include <unordered_set>
+
 #include "kimera_distributed/Keyframe.h"
 
 namespace kimera_distributed {
@@ -78,6 +80,11 @@ class Submap {
    * @return
    */
   std::unordered_set<int> getKeyframeIDs() const;
+  /**
+   * @brief Get the anchor keyframe (the first keyframe this submap was created from)
+   * @return pointer to anchor keyframe, or nullptr if no keyframes exist
+   */
+  std::shared_ptr<Keyframe> getAnchorKeyframe() const;
 
  private:
   const int id_;  // unique id of this submap
@@ -89,6 +96,8 @@ class Submap {
   gtsam::Pose3
       T_world_submap_;  // the pose of this submap if the world frame (might not exist)
   double distance_;     // cumulative distance traveled in this submap
+  std::shared_ptr<Keyframe>
+      anchor_keyframe_;  // the first keyframe this submap was created from
 };
 
 }  // namespace kimera_distributed

@@ -235,10 +235,6 @@ bool DistributedLoopClosure::processLocalPoseGraph(
         incremental_pub = false;
         auto kf = submap_atlas_->getKeyframe(frame_dst);
         kf->setPoseInOdomFrame(T_odom_dst);
-        auto T_submap_keyframe = kf->getPoseInSubmapFrame();
-        auto T_odom_kf = T_odom_dst;
-        auto T_odom_submap = T_odom_kf * T_submap_keyframe.inverse();
-        kf->getSubmap()->setPoseInOdomFrame(T_odom_submap);
       }
 
       // Save keyframe pose to file
@@ -274,14 +270,17 @@ bool DistributedLoopClosure::processLocalPoseGraph(
       gtsam::Symbol to_key(robot_id_to_prefix.at(config_.my_id_), submap_dst->id());
       // Skip this loop closure if two submaps are identical or consecutive
       if (std::abs(submap_src->id() - submap_dst->id()) <= 1) continue;
+      // Create edge ID for this submap pair
+      lcd::EdgeID edge_id(
+          config_.my_id_, submap_src->id(), config_.my_id_, submap_dst->id());
       // Skip this loop closure if a loop closure already exists between the two submaps
-      if (hasBetweenFactor(submap_loop_closures_, from_key, to_key)) continue;
+      if (submap_loop_closures_.find(edge_id) != submap_loop_closures_.end()) continue;
       const auto T_s1_f1 = keyframe_src->getPoseInSubmapFrame();
       const auto T_s2_f2 = keyframe_dst->getPoseInSubmapFrame();
       const auto T_s1_s2 = T_s1_f1 * T_f1_f2 * (T_s2_f2.inverse());
       // Convert the loop closure to between the corresponding submaps
-      submap_loop_closures_.add(
-          gtsam::BetweenFactor<gtsam::Pose3>(from_key, to_key, T_s1_s2, noise));
+      submap_loop_closures_[edge_id] =
+          gtsam::BetweenFactor<gtsam::Pose3>(from_key, to_key, T_s1_s2, noise);
     }
   }
   return incremental_pub;
@@ -711,7 +710,6 @@ void DistributedLoopClosure::detectLoop(
 }
 
 void DistributedLoopClosure::verifyLoopSpin() {
-  LOG_IF(INFO, queued_lc_.empty()) << "No loop closures to verify.";
   while (queued_lc_.size() > 0) {
     VLOG(1) << "Verifying loop closures (" << queued_lc_.size() << " in the queue).";
     // Attempt to detect a single loop closure
@@ -734,50 +732,19 @@ void DistributedLoopClosure::verifyLoopSpin() {
       // Geometric verification
       gtsam::Rot3 monoR_query_match;
       gtsam::Pose3 T_query_match;
-      // Perform monocular RANSAC
-      LOG(INFO) << "Starting Nister geometric verification for loop closure between ("
-                << vertex_query.first << "," << vertex_query.second << ")-("
-                << vertex_match.first << "," << vertex_match.second << "). "
-                << "Match score: " << match_score
-                << ", Num correspondences: " << i_query.size()
-                << ", i_query size: " << i_query.size()
-                << ", i_match size: " << i_match.size();
-      VLOG(1) << "performing geometric verification for loop closure between ("
-              << vertex_query.first << "," << vertex_query.second << ")-("
-              << vertex_match.first << "," << vertex_match.second << ").";
-      auto start_mono = std::chrono::high_resolution_clock::now();
       bool nister_result = lcd_->geometricVerificationNister(
           vertex_query, vertex_match, &i_query, &i_match, &monoR_query_match);
-      auto end_mono = std::chrono::high_resolution_clock::now();
-      std::chrono::duration<double> elapsed_mono = end_mono - start_mono;
-      LOG(INFO) << "Nister geometric verification completed for loop closure between ("
-                << vertex_query.first << "," << vertex_query.second << ")-("
-                << vertex_match.first << "," << vertex_match.second << "). "
-                << "Result: " << (nister_result ? "SUCCESS" : "FAILED")
-                << ", Elapsed time: " << elapsed_mono.count() * 1000 << " ms"
-                << ", Output inliers: " << i_query.size();
       if (nister_result) {
-        VLOG(1) << "Monocular RANSAC succeeded for loop closure between ("
-                << vertex_query.first << "," << vertex_query.second << ")-("
-                << vertex_match.first << "," << vertex_match.second << ")."
-                << " Elapsed time: " << elapsed_mono.count() * 1000 << " ms.";
         size_t mono_inliers_count = i_query.size();
 
         // Perform stereo RANSAC, using relative rotation estimate from mono RANSAC as
         // prior
-        auto start_stereo = std::chrono::high_resolution_clock::now();
         if (lcd_->recoverPose(vertex_query,
                               vertex_match,
                               &i_query,
                               &i_match,
                               &T_query_match,
                               &monoR_query_match)) {
-          auto end_stereo = std::chrono::high_resolution_clock::now();
-          std::chrono::duration<double> elapsed_stereo = end_stereo - start_stereo;
-          VLOG(1) << "Stereo RANSAC succeeded for loop closure between ("
-                  << vertex_query.first << "," << vertex_query.second << ")-("
-                  << vertex_match.first << "," << vertex_match.second << ")."
-                  << " Elapsed time: " << elapsed_stereo.count() * 1000 << " ms.";
           size_t stereo_inliers_count = i_query.size();
           // Get loop closure between keyframes (for logging purpose)
           lcd::VLCEdge keyframe_edge(vertex_query, vertex_match, T_query_match);
@@ -807,42 +774,6 @@ void DistributedLoopClosure::verifyLoopSpin() {
           }
           num_loops_with_robot_[other_robot] += 1;
 
-          // Get loop closure between the corresponding two submaps
-          const auto T_s1_f1 = frame1.T_submap_pose_;
-          const auto T_s2_f2 = frame2.T_submap_pose_;
-          const auto T_f1_f2 = T_query_match;
-          const auto T_s1_s2 = T_s1_f1 * T_f1_f2 * (T_s2_f2.inverse());
-          gtsam::Symbol submap_from(robot_id_to_prefix.at(frame1.robot_id_),
-                                    frame1.submap_id_);
-          gtsam::Symbol submap_to(robot_id_to_prefix.at(frame2.robot_id_),
-                                  frame2.submap_id_);
-
-          // Skip intra loop connecting identical or consecutive submaps from the same
-          // robot
-          const int robot_id_from = frame1.robot_id_;
-          const int robot_id_to = frame2.robot_id_;
-          const int submap_id_from = frame1.submap_id_;
-          const int submap_id_to = frame2.submap_id_;
-          if (robot_id_from == robot_id_to && abs(submap_id_from - submap_id_to) <= 1) {
-            continue;
-          }
-
-          // Add this loop closure if no loop closure exists between the two submaps
-          // This ensures that there is at most one loop closure between every pair of
-          // submaps
-          lcd::EdgeID submap_edge_id(
-              frame1.robot_id_, frame1.submap_id_, frame2.robot_id_, frame2.submap_id_);
-          bool loop_exists = (submap_loop_closures_ids_.find(submap_edge_id) !=
-                              submap_loop_closures_ids_.end());
-          if (!loop_exists) {
-            submap_loop_closures_ids_.emplace(submap_edge_id);
-            // Add new loop to queue for synchronization with other robots
-            submap_loop_closures_queue_[submap_edge_id] =
-                gtsam::BetweenFactor<gtsam::Pose3>(
-                    submap_from, submap_to, T_s1_s2, noise);
-            // submap_loop_closures_.add(gtsam::BetweenFactor<gtsam::Pose3>(
-            // submap_from, submap_to, T_s1_s2, noise));
-          }
           LOG(INFO) << "Verified loop (" << vertex_query.first << ","
                     << vertex_query.second << ")-(" << vertex_match.first << ","
                     << vertex_match.second << "). Normalized BoW score: " << match_score
@@ -874,19 +805,23 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
     return out_graph;
   }
 
+  gtsam::NonlinearFactorGraph loops;
+  for (const auto& [edge_id, factor] : submap_loop_closures_) {
+    loops.add(factor);
+  }
   if (incremental) {
-    gtsam::NonlinearFactorGraph new_loop_closures(
-        submap_loop_closures_.begin() + last_get_lc_idx_, submap_loop_closures_.end());
-    out_graph = GtsamGraphToRos(new_loop_closures, gtsam::Values());
-    last_get_lc_idx_ = submap_loop_closures_.size();
-  } else {
-    gtsam::NonlinearFactorGraph loops;
-    for (const auto& [edge_id, factor] : submap_loop_closures_queue_) {
-      LOG(INFO) << "publish loop: " << gtsam::DefaultKeyFormatter(factor.keys()[0])
-                << "->" << gtsam::DefaultKeyFormatter(factor.keys()[1]);
-      loops.add(factor);
+    // For incremental, only publish new loops since last call
+    gtsam::NonlinearFactorGraph new_loop_closures;
+    size_t idx = 0;
+    for (const auto& factor : loops) {
+      if (idx >= last_get_lc_idx_) {
+        new_loop_closures.add(factor);
+      }
+      idx++;
     }
-    submap_loop_closures_queue_.clear();
+    out_graph = GtsamGraphToRos(new_loop_closures, gtsam::Values());
+    last_get_lc_idx_ = loops.size();
+  } else {
     out_graph = GtsamGraphToRos(loops, gtsam::Values());
   }
   const std::string robot_name = config_.robot_names_.at(config_.my_id_);
@@ -996,6 +931,113 @@ size_t DistributedLoopClosure::updateCandidateList() {
   LOG(INFO) << "Loop closure candidates ready for verification: " << ready_candidates
             << ", waiting for frames: " << total_candidates;
   return total_candidates;
+}
+
+void DistributedLoopClosure::updateSubmapLoops() {
+  // Clear existing submap loop closures
+  submap_loop_closures_.clear();
+
+  static const gtsam::SharedNoiseModel& noise =
+      gtsam::noiseModel::Isotropic::Variance(6, 1e-2);
+
+  // Iterate through all keyframe loop closures
+  for (const auto& factor : keyframe_loop_closures_) {
+    auto between_factor =
+        boost::dynamic_pointer_cast<gtsam::BetweenFactor<gtsam::Pose3>>(factor);
+    if (!between_factor) {
+      continue;
+    }
+
+    gtsam::Symbol key1(between_factor->key1());
+    gtsam::Symbol key2(between_factor->key2());
+    const gtsam::Pose3 T_f1_f2 = between_factor->measured();
+
+    // Get robot IDs from symbol characters
+    lcd::RobotId robot_id_1 = robot_prefix_to_id.at(key1.chr());
+    lcd::RobotId robot_id_2 = robot_prefix_to_id.at(key2.chr());
+    lcd::PoseId pose_id_1 = key1.index();
+    lcd::PoseId pose_id_2 = key2.index();
+
+    lcd::RobotPoseId vertex1(robot_id_1, pose_id_1);
+    lcd::RobotPoseId vertex2(robot_id_2, pose_id_2);
+
+    // Get VLC frames to access submap information
+    if (!lcd_->frameExists(vertex1) || !lcd_->frameExists(vertex2)) {
+      LOG(WARNING) << "VLC frame missing for keyframe loop (" << robot_id_1 << ","
+                   << pose_id_1 << ")-(" << robot_id_2 << "," << pose_id_2 << ")";
+      continue;
+    }
+
+    const auto frame1 = lcd_->getVLCFrame(vertex1);
+    const auto frame2 = lcd_->getVLCFrame(vertex2);
+
+    // Skip intra loop connecting identical or consecutive submaps from the same robot
+    // Use max - min for distance since submap_id_ is size_t (unsigned)
+    size_t submap_dist = (frame1.submap_id_ > frame2.submap_id_)
+                             ? (frame1.submap_id_ - frame2.submap_id_)
+                             : (frame2.submap_id_ - frame1.submap_id_);
+    if (frame1.robot_id_ == frame2.robot_id_ && submap_dist <= 1) {
+      continue;
+    }
+
+    // Create edge ID for this submap pair
+    lcd::EdgeID submap_edge_id(
+        frame1.robot_id_, frame1.submap_id_, frame2.robot_id_, frame2.submap_id_);
+
+    // Check if loop already exists between these submaps
+    bool loop_exists =
+        (submap_loop_closures_.find(submap_edge_id) != submap_loop_closures_.end());
+
+    // Compute submap-to-submap transformation
+    const auto T_s1_f1 = frame1.T_submap_pose_;
+    const auto T_s2_f2 = frame2.T_submap_pose_;
+    const auto T_s1_s2 = T_s1_f1 * T_f1_f2 * (T_s2_f2.inverse());
+
+    gtsam::Symbol submap_from(robot_id_to_prefix.at(frame1.robot_id_),
+                              frame1.submap_id_);
+    gtsam::Symbol submap_to(robot_id_to_prefix.at(frame2.robot_id_), frame2.submap_id_);
+
+    // Add or update the loop closure in the map
+    submap_loop_closures_[submap_edge_id] =
+        gtsam::BetweenFactor<gtsam::Pose3>(submap_from, submap_to, T_s1_s2, noise);
+  }
+
+  LOG(INFO) << "Updated submap loops: " << submap_loop_closures_.size()
+            << " submap loops from " << keyframe_loop_closures_.size()
+            << " keyframe loops";
+}
+
+void DistributedLoopClosure::updateSubmapPoses() {
+  // Iterate through all submaps
+  for (int submap_id = 0; submap_id < submap_atlas_->numSubmaps(); ++submap_id) {
+    auto submap = submap_atlas_->getSubmap(submap_id);
+    if (!submap) continue;
+
+    // Get anchor keyframe (the first keyframe this submap was created from)
+    auto anchor_kf = submap->getAnchorKeyframe();
+    if (!anchor_kf) continue;
+
+    // Compute T_odom_submap from the anchor keyframe:
+    // T_odom_submap = T_odom_kf * T_submap_kf^(-1)
+    const gtsam::Pose3 T_odom_kf = anchor_kf->getPoseInOdomFrame();
+    const gtsam::Pose3 T_submap_kf = anchor_kf->getPoseInSubmapFrame();
+    const gtsam::Pose3 T_odom_submap = T_odom_kf * T_submap_kf.inverse();
+
+    // Update submap pose
+    submap->setPoseInOdomFrame(T_odom_submap);
+
+    // Update all keyframes' T_submap_keyframe to be consistent:
+    // T_submap_kf = T_odom_submap^(-1) * T_odom_kf
+    for (int kf_id : submap->getKeyframeIDs()) {
+      auto kf = submap->getKeyframe(kf_id);
+      if (!kf) continue;
+      const gtsam::Pose3 T_odom_kf_i = kf->getPoseInOdomFrame();
+      const gtsam::Pose3 T_submap_kf_i = T_odom_submap.inverse() * T_odom_kf_i;
+      kf->setPoseInSubmapFrame(T_submap_kf_i);
+    }
+  }
+
+  VLOG(1) << "Updated submap poses for " << submap_atlas_->numSubmaps() << " submaps";
 }
 
 gtsam::Pose3 DistributedLoopClosure::getOdomInWorldFrame() const {
@@ -1338,40 +1380,8 @@ void DistributedLoopClosure::processOfflineLoopClosures() {
     if (offline_robot_pose_msg_.find(vertex_from) != offline_robot_pose_msg_.end() &&
         offline_robot_pose_msg_.find(vertex_to) != offline_robot_pose_msg_.end()) {
       num_loops_processed++;
-      const auto& msg_from = offline_robot_pose_msg_.at(vertex_from);
-      const auto& msg_to = offline_robot_pose_msg_.at(vertex_to);
-      const int submap_id_from = (int)msg_from.submap_id;
-      const int submap_id_to = (int)msg_to.submap_id;
-      const lcd::EdgeID submap_edge_id(
-          robot_from, submap_id_from, robot_to, submap_id_to);
-      // Skip if loop closure connects identical or consecutive submaps of same robots
-      if (robot_from == robot_to && abs(submap_id_from - submap_id_to) <= 1) {
-        LOG(WARNING) << "Skip intra loop connecting submap " << submap_id_from
-                     << " and " << submap_id_to << ".";
-        continue;
-      }
-      bool loop_exist = (submap_loop_closures_ids_.find(submap_edge_id) !=
-                         submap_loop_closures_ids_.end());
-      if (!loop_exist) {
-        const gtsam::BetweenFactor<gtsam::Pose3>& factor_pose3 =
-            *boost::dynamic_pointer_cast<gtsam::BetweenFactor<gtsam::Pose3>>(factor);
-        submap_loop_closures_ids_.emplace(submap_edge_id);
-        // Extract relative transformation between submaps
-        gtsam::Pose3 T_s1_f1 = RosPoseToGtsam(msg_from.T_submap_pose);
-        gtsam::Pose3 T_s2_f2 = RosPoseToGtsam(msg_to.T_submap_pose);
-        gtsam::Pose3 T_f1_f2 = factor_pose3.measured();
-        gtsam::Pose3 T_s1_s2 = T_s1_f1 * T_f1_f2 * (T_s2_f2.inverse());
-        // Add new loop to queue for synchronization with other robots
-        gtsam::Symbol submap_from(robot_id_to_prefix.at(robot_from), submap_id_from);
-        gtsam::Symbol submap_to(robot_id_to_prefix.at(robot_to), submap_id_to);
-        static const gtsam::SharedNoiseModel& noise =
-            gtsam::noiseModel::Isotropic::Variance(6, 1e-2);
-        // submap_loop_closures_queue_[submap_edge_id] =
-        // gtsam::BetweenFactor<gtsam::Pose3>(
-        //     submap_from, submap_to, T_s1_s2, noise);
-        submap_loop_closures_.add(
-            gtsam::BetweenFactor<gtsam::Pose3>(submap_from, submap_to, T_s1_s2, noise));
-      }
+      // Add to keyframe loop closures for later submap loop generation
+      keyframe_loop_closures_.add(factor);
     } else {
       // Keyframe info is not yet available
       remaining_loop_closures_.add(factor);

@@ -35,7 +35,7 @@
   <arg name="log_output_path"      default="$(find kimera_distributed)/logs/kimera$(arg robot_id)/"/>
 
   <!-- Launch Kimera Distributed Loop Closure Node -->
-  <node launch-prefix="$(arg launch_prefix)" name="distributed_loop_closure_node" pkg="kimera_distributed" type="kimera_distributed_loop_closure_node" output="screen" ns="distributed_loop_closure" args="-v 1" required="true" >
+  <node launch-prefix="$(arg launch_prefix)" name="distributed_loop_closure_node" pkg="kimera_distributed" type="kimera_distributed_loop_closure_node" output="screen" ns="distributed_loop_closure" args="" required="true" >
     <param name="robot_id"               value="$(arg robot_id)"/>
     <param name="num_robots"             value="$(arg num_robots)" />
     <param name="frame_id"               value="$(arg frame_id)" />

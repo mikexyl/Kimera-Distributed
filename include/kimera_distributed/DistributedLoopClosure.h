@@ -68,12 +68,9 @@ class DistributedLoopClosure {
   // Loop closures
   int num_inter_robot_loops_;
   gtsam::NonlinearFactorGraph keyframe_loop_closures_;
-  gtsam::NonlinearFactorGraph submap_loop_closures_;
-  // New loop closures to be synchronized with other robots
+  // Map from edge ID to submap loop closure factor
   std::map<lcd::EdgeID, gtsam::BetweenFactor<gtsam::Pose3>, lcd::CompareEdgeID>
-      submap_loop_closures_queue_;
-  // Edge IDs of all established loop closures
-  std::set<lcd::EdgeID, lcd::CompareEdgeID> submap_loop_closures_ids_;
+      submap_loop_closures_;
 
   // Data structures for offline mode
   gtsam::NonlinearFactorGraph offline_keyframe_loop_closures_;
@@ -215,6 +212,22 @@ class DistributedLoopClosure {
    * Update the candidate list and verification queue
    */
   size_t updateCandidateList();
+
+  /**
+   * @brief Generate or update submap loops from all keyframe loops
+   * This function iterates through all keyframe loop closures and creates
+   * corresponding submap loop closures, ensuring at most one loop closure
+   * between each pair of submaps.
+   */
+  void updateSubmapLoops();
+
+  /**
+   * @brief Update submap poses from the latest keyframe poses
+   * For each submap, recompute T_odom_submap based on the first keyframe's
+   * T_odom_keyframe and T_submap_keyframe. Then update all keyframes'
+   * T_submap_keyframe to be consistent with the new submap pose.
+   */
+  void updateSubmapPoses();
 
   /**
    * Save the Bow vectors from this session

@@ -273,6 +273,9 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   tf_timer_ = nh_.createTimer(
       ros::Duration(1.0), &DistributedLoopClosureRos::tfTimerCallback, this);
 
+  pose_graph_pub_timer_ = nh_.createTimer(
+      ros::Duration(1.0), &DistributedLoopClosureRos::poseGraphPubTimerCallback, this);
+
   LOG(INFO) << "Distributed Kimera node initialized (ID = " << config_.my_id_ << "). \n"
             << "Parameters: \n"
             << "alpha = " << config_.lcd_params_.alpha_ << "\n"
@@ -362,7 +365,13 @@ void DistributedLoopClosureRos::bowCallback(
 
 void DistributedLoopClosureRos::localPoseGraphCallback(
     const pose_graph_tools_msgs::PoseGraph::ConstPtr& msg) {
-  bool incremental_pub = processLocalPoseGraph(msg);
+  processLocalPoseGraph(msg);
+}
+
+void DistributedLoopClosureRos::poseGraphPubTimerCallback(
+    const ros::TimerEvent& event) {
+  updateSubmapPoses();
+  updateSubmapLoops();
 
   // Publish sparsified pose graph
   pose_graph_tools_msgs::PoseGraph sparse_pose_graph = getSubmapPoseGraph(false);
@@ -429,7 +438,6 @@ void DistributedLoopClosureRos::runVerification() {
   ros::WallRate r(1);
   while (ros::ok() && !should_shutdown_) {
     if (queued_lc_.empty()) {
-      LOG(INFO) << "No loop to verify, verification thread sleeping.";
       r.sleep();
     } else {
       verifyLoopSpin();
