@@ -187,11 +187,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   internal_vlc_sub_ = nh_.subscribe(
       internal_vlc_topic, 1000, &DistributedLoopClosureRos::internalVLCCallback, this);
 
-  std::string dpgo_topic =
-      "/" + config_.robot_names_[config_.my_id_] + "/dpgo_ros_node/path";
-  dpgo_sub_ =
-      nh_.subscribe(dpgo_topic, 3, &DistributedLoopClosureRos::dpgoCallback, this);
-
   std::string connectivity_topic =
       "/" + config_.robot_names_[config_.my_id_] + "/connected_peer_ids";
   connectivity_sub_ = nh_.subscribe(
@@ -229,16 +224,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
           resp_topic, 10, &DistributedLoopClosureRos::vlcResponsesCallback, this);
       vlc_responses_sub_.push_back(resp_sub);
     }
-  }
-
-  if (config_.my_id_ > 0) {
-    std::string pose_corrector_topic =
-        "/" + config_.robot_names_[0] + "/kimera_distributed/pose_corrector";
-    dpgo_frame_corrector_sub_ =
-        nh_.subscribe(pose_corrector_topic,
-                      1,
-                      &DistributedLoopClosureRos::dpgoFrameCorrectionCallback,
-                      this);
   }
 
   // Publisher
@@ -401,51 +386,6 @@ void DistributedLoopClosureRos::connectivityCallback(
   }
 }
 
-void DistributedLoopClosureRos::dpgoCallback(const nav_msgs::PathConstPtr& msg) {
-  processOptimizedPath(msg);
-  gtsam::Values::shared_ptr nodes_ptr(new gtsam::Values);
-  computePosesInWorldFrame(nodes_ptr);
-  if (config_.run_offline_) {
-    saveSubmapAtlas(config_.log_output_dir_);
-    auto elapsed_time = ros::Time::now() - start_time_;
-    int elapsed_sec = int(elapsed_time.toSec());
-    std::string file_path = config_.log_output_dir_ + "kimera_distributed_poses_" +
-                            std::to_string(elapsed_sec) + ".csv";
-    savePosesToFile(file_path, *nodes_ptr);
-  }
-  publishOptimizedNodesAndPath(*nodes_ptr);
-}
-
-void DistributedLoopClosureRos::publishOptimizedNodesAndPath(
-    const gtsam::Values& nodes) {
-  pose_graph_tools_msgs::PoseGraph nodes_msg;
-  nav_msgs::Path path_msg;
-  for (const auto& key_pose : nodes) {
-    pose_graph_tools_msgs::PoseGraphNode node_msg;
-    gtsam::Symbol key_symb(key_pose.key);
-    node_msg.key = key_symb.index();
-    node_msg.robot_id = config_.my_id_;
-    node_msg.pose = GtsamPoseToRos(nodes.at<gtsam::Pose3>(node_msg.key));
-    const auto keyframe = submap_atlas_->getKeyframe(key_pose.key);
-    node_msg.header.stamp.fromNSec(keyframe->stamp());
-    nodes_msg.nodes.push_back(node_msg);
-
-    geometry_msgs::PoseStamped pose_stamped;
-    pose_stamped.pose = node_msg.pose;
-    pose_stamped.header = node_msg.header;
-    path_msg.poses.push_back(pose_stamped);
-    path_msg.header = node_msg.header;
-  }
-  path_msg.header.frame_id = world_frame_id_;
-  optimized_nodes_pub_.publish(nodes_msg);
-  optimized_path_pub_.publish(path_msg);
-}
-
-void DistributedLoopClosureRos::dpgoFrameCorrectionCallback(
-    const geometry_msgs::Pose::ConstPtr& msg) {
-  T_world_dpgo_ = RosPoseToGtsam(*msg);
-}
-
 void DistributedLoopClosureRos::logTimerCallback(const ros::TimerEvent& event) {
   if (!config_.log_output_) return;
   if (config_.run_offline_) return;
@@ -464,52 +404,7 @@ void DistributedLoopClosureRos::logTimerCallback(const ros::TimerEvent& event) {
   }
 }
 
-void DistributedLoopClosureRos::publishWorldToDpgoCorrection() {
-  if (config_.my_id_ != 0) {
-    return;
-  }
-
-  dpgo_frame_corrector_pub_.publish(GtsamPoseToRos(T_world_dpgo_));
-}
-
-void DistributedLoopClosureRos::publishOdomToWorld() {
-  geometry_msgs::TransformStamped tf_world_odom;
-  tf_world_odom.header.stamp = ros::Time::now();
-  tf_world_odom.header.frame_id = world_frame_id_;
-  tf_world_odom.child_frame_id = odom_frame_id_;
-
-  const gtsam::Pose3 T_world_odom = getOdomInWorldFrame();
-  GtsamPoseToRosTf(T_world_odom, &tf_world_odom.transform);
-  tf_broadcaster_.sendTransform(tf_world_odom);
-}
-
-void DistributedLoopClosureRos::publishLatestKFToWorld() {
-  geometry_msgs::TransformStamped tf_world_base;
-  tf_world_base.header.stamp = ros::Time::now();
-  tf_world_base.header.frame_id = world_frame_id_;
-  tf_world_base.child_frame_id = latest_kf_frame_id_;
-
-  const gtsam::Pose3 T_world_base = getLatestKFInWorldFrame();
-  GtsamPoseToRosTf(T_world_base, &tf_world_base.transform);
-  tf_broadcaster_.sendTransform(tf_world_base);
-}
-
-void DistributedLoopClosureRos::publishLatestKFToOdom() {
-  geometry_msgs::TransformStamped tf_odom_base;
-  tf_odom_base.header.stamp = ros::Time::now();
-  tf_odom_base.header.frame_id = odom_frame_id_;
-  tf_odom_base.child_frame_id = latest_kf_frame_id_;
-
-  const gtsam::Pose3 T_odom_base = getLatestKFInOdomFrame();
-  GtsamPoseToRosTf(T_odom_base, &tf_odom_base.transform);
-  tf_broadcaster_.sendTransform(tf_odom_base);
-}
-
 void DistributedLoopClosureRos::tfTimerCallback(const ros::TimerEvent& event) {
-  publishWorldToDpgoCorrection();
-  publishOdomToWorld();
-  publishLatestKFToOdom();  // Currently for debugging
-
   size_t total_bow_mb =
       std::accumulate(received_bow_bytes_.begin(), received_bow_bytes_.end(), 0);
   rerun_visualizer_->drawScalar(

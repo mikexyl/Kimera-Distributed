@@ -1,6 +1,6 @@
 # Yaml configuration for visual loop closure parameters
 
-detect_interrobot_only: true
+detect_interrobot_only: false
 
 # Matcher parameters (DBoW2)
 alpha: 0.7
@@ -42,7 +42,7 @@ lcd_min_matched_features: 30
 network_input_width: 320
 network_input_height: 224
 
-min_sim_vlad: 0.7
+min_sim_vlad: 0.8
 
 gt_files:
   [

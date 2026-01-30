@@ -128,32 +128,9 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   void vlcRequestsCallback(const pose_graph_tools_msgs::VLCRequestsConstPtr& msg);
 
   /**
-   * @brief Callback to receive optimized submap poses from dpgo
-   * @param msg
-   */
-  void dpgoCallback(const nav_msgs::PathConstPtr& msg);
-
-  /**
-   * @brief Publish optimized nodes
-   * @param msg
-   */
-  void publishOptimizedNodesAndPath(const gtsam::Values& nodes);
-
-  /**
-   * @brief Subscribe to T_world_dpgo (default to identity)
-   * @param msg
-   */
-  void dpgoFrameCorrectionCallback(const geometry_msgs::Pose::ConstPtr& msg);
-
-  /**
    * @brief Callback to timer used for periodically logging
    */
   void logTimerCallback(const ros::TimerEvent& event);
-
-  /**
-   * @brief Publish world to dpgo frame based on first robot
-   */
-  void publishWorldToDpgoCorrection();
 
   /**
    * @brief Callback to timer used for periodically publishing TF
@@ -213,21 +190,6 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
    * Randomly sleep from (min_sec, max_sec) seconds
    */
   void randomSleep(double min_sec, double max_sec);
-
-  /**
-   * @brief Publish TF between world and odom
-   */
-  void publishOdomToWorld();
-
-  /**
-   * @brief Publish TF between world and latest keyframe
-   */
-  void publishLatestKFToWorld();
-
-  /**
-   * @brief Publish TF between odom and latest keyframe
-   */
-  void publishLatestKFToOdom();
 
   /**
    * @brief Save VLC frames and BoW vectors

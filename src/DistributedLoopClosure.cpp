@@ -9,6 +9,7 @@
 #include <DBoW2/DBoW2.h>
 #include <glog/logging.h>
 #include <gtsam/geometry/Pose3.h>
+#include <gtsam/inference/Key.h>
 #include <gtsam/nonlinear/NonlinearFactorGraph.h>
 #include <kimera_multi_lcd/io.h>
 #include <kimera_multi_lcd/utils.h>
@@ -881,6 +882,8 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
   } else {
     gtsam::NonlinearFactorGraph loops;
     for (const auto& [edge_id, factor] : submap_loop_closures_queue_) {
+      LOG(INFO) << "publish loop: " << gtsam::DefaultKeyFormatter(factor.keys()[0])
+                << "->" << gtsam::DefaultKeyFormatter(factor.keys()[1]);
       loops.add(factor);
     }
     submap_loop_closures_queue_.clear();
