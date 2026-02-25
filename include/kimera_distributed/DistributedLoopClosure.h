@@ -47,6 +47,8 @@ class DistributedLoopClosure {
 
   std::vector<size_t> received_bow_bytes_;
   std::vector<size_t> received_vlc_bytes_;
+  size_t num_pr_loops_ = 0;
+  size_t num_gv_loops_ = 0;
 
   // Submap Atlas
   std::unique_ptr<SubmapAtlas> submap_atlas_;

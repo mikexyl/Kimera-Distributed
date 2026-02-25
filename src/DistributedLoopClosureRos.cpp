@@ -167,8 +167,6 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
 
   rerun_visualizer_->visualizeGTTrajectories();
 
-  // std::string(time_str));
-
   lcd_->setVisualizer(rerun_visualizer_);
 
   ros::param::get("~max_submap_size", config.submap_params_.max_submap_size);
@@ -272,6 +270,16 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
 
   tf_timer_ = nh_.createTimer(
       ros::Duration(1.0), &DistributedLoopClosureRos::tfTimerCallback, this);
+
+  visualization_timer_ =
+      nh_.createTimer(ros::Duration(1.0), [&](const ros::TimerEvent&) {
+        rerun_visualizer_->drawScalar(
+            "/" + config_.robot_names_.at(config_.my_id_) + "/num_pr_loops",
+            num_pr_loops_);
+        rerun_visualizer_->drawScalar(
+            "/" + config_.robot_names_.at(config_.my_id_) + "/num_gv_loops",
+            num_gv_loops_);
+      });
 
   pose_graph_pub_timer_ = nh_.createTimer(
       ros::Duration(1.0), &DistributedLoopClosureRos::poseGraphPubTimerCallback, this);

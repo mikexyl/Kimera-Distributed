@@ -684,6 +684,7 @@ void DistributedLoopClosure::detectLoop(
           {  // start candidate critical section. Add to candidate for request
             std::unique_lock<std::mutex> candidate_lock(candidate_lc_mutex_);
             candidate_lc_.at(robot_query).push_back(potential_edge);
+            num_pr_loops_++;
           }  // end candidate critical section
         }
       }
@@ -702,6 +703,7 @@ void DistributedLoopClosure::detectLoop(
             // start candidate critical section. Add to candidate for request
             std::unique_lock<std::mutex> candidate_lock(candidate_lc_mutex_);
             candidate_lc_.at(robot_query).push_back(potential_edge);
+            num_pr_loops_++;
           }  // end candidate critical section
         }
       }
@@ -773,6 +775,7 @@ void DistributedLoopClosure::verifyLoopSpin() {
             other_robot = vertex_query.first;
           }
           num_loops_with_robot_[other_robot] += 1;
+          num_gv_loops_++;
 
           LOG(INFO) << "Verified loop (" << vertex_query.first << ","
                     << vertex_query.second << ")-(" << vertex_match.first << ","

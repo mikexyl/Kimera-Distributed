@@ -69,6 +69,7 @@ class DistributedLoopClosureRos : DistributedLoopClosure {
   ros::Timer log_timer_;
   ros::Timer tf_timer_;
   ros::Timer pose_graph_pub_timer_;
+  ros::Timer visualization_timer_;
   ros::Time start_time_;
 
   ros::Time next_latest_bow_pub_time_;
