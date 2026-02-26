@@ -431,6 +431,12 @@ void DistributedLoopClosureRos::tfTimerCallback(const ros::TimerEvent& event) {
       std::accumulate(received_vlc_bytes_.begin(), received_vlc_bytes_.end(), 0);
   rerun_visualizer_->drawScalar(
       config_.robot_names_.at(config_.my_id_) + "/received_vlc_byte", total_vlc_mb);
+
+  size_t total_vlc_descriptor_bytes = std::accumulate(
+      received_vlc_descriptor_bytes_.begin(), received_vlc_descriptor_bytes_.end(), 0);
+  rerun_visualizer_->drawScalar(
+      config_.robot_names_.at(config_.my_id_) + "/received_vlc_descriptor_byte",
+      total_vlc_descriptor_bytes);
 }
 
 void DistributedLoopClosureRos::runDetection() {
@@ -734,6 +740,8 @@ void DistributedLoopClosureRos::vlcResponsesCallback(
     if (frame.robot_id_ != config_.my_id_) {
       received_vlc_bytes_.push_back(
           kimera_multi_lcd::computeVLCFramePayloadBytes(frame_msg));
+      received_vlc_descriptor_bytes_.push_back(
+          kimera_multi_lcd::computeVLCFrameDescriptorBytes(frame_msg));
     }
     if (config_.run_offline_) {
       offline_robot_pose_msg_[vertex_id] = frame_msg;
