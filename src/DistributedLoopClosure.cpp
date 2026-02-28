@@ -74,13 +74,7 @@ void DistributedLoopClosure::initialize(const DistributedLoopClosureConfig& conf
   submap_atlas_.reset(new SubmapAtlas(config_.submap_params_));
 
   if (config_.run_offline_) {
-    for (size_t id = config.my_id_; id < config.num_robots_; ++id) {
-      loadBowVectors(
-          id,
-          config.offline_dir_ + "robot_" + std::to_string(id) + "_bow_vectors.json");
-      loadVLCFrames(
-          id, config.offline_dir_ + "robot_" + std::to_string(id) + "_vlc_frames.json");
-    }
+    LOG(FATAL) << "Offline mode removed";
 
     // Load odometry
     loadOdometryFromFile(config_.offline_dir_ + "odometry_poses.csv");
@@ -104,6 +98,16 @@ void DistributedLoopClosure::processBow(
   for (const auto& msg : query_msg->queries) {
     lcd::RobotId robot_id = msg.robot_id;
     lcd::PoseId pose_id = msg.pose_id;
+
+    if (not msg.bow_vector.word_values.empty()) {
+      CHECK_EQ(msg.bow_vector.scores.size(),
+               3,
+               fmt::format(" self robot? {}", robot_id == config_.my_id_));
+      CHECK(msg.bow_vector.scores[0] != 0,
+            fmt::format(" self robot? {}", robot_id == config_.my_id_));
+      CHECK(msg.bow_vector.scores[1] != 0);
+      CHECK(msg.bow_vector.scores[2] != 0);
+    }
 
     CHECK_NE(msg.header.stamp.toNSec(), 0);
 
@@ -627,7 +631,8 @@ void DistributedLoopClosure::detectLoopSpin() {
     lcd::PoseId query_pose = msg.pose_id;
     lcd::RobotPoseId query_vertex(query_robot, query_pose);
     kimera_multi_lcd::VLADLoopClosureDetector::GlobalDesc global_desc;
-    kimera_multi_lcd::MatFromBowVectorMsg(msg.bow_vector, &global_desc);
+    kimera_multi_lcd::MatFromBowVectorMsg(msg.bow_vector, &global_desc.descriptor);
+    global_desc.scores = msg.bow_vector.scores;
 
     if (query_pose <= 2 * config_.bow_skip_num_) {
       // We cannot detect loop for the very first few frames
@@ -1078,54 +1083,6 @@ gtsam::Pose3 DistributedLoopClosure::getLatestKFInOdomFrame() const {
     T_odom_kf = keyframe->getPoseInOdomFrame();
   }
   return T_odom_kf;
-}
-
-void DistributedLoopClosure::saveBowVectors(const std::string& filepath) const {
-  for (const auto& robot_pose_id : bow_latest_) {
-    std::string bow_vector_save = filepath + "/robot_" +
-                                  std::to_string(robot_pose_id.first) +
-                                  "_bow_vectors.json";
-    LOG(INFO) << "Saving loop closure BoWs to " << bow_vector_save;
-    lcd::saveGlobalDescMat(lcd_->getGlobalDescs(robot_pose_id.first), bow_vector_save);
-  }
-}
-
-void DistributedLoopClosure::saveVLCFrames(const std::string& filepath) const {
-  for (const auto& robot_pose_id : bow_latest_) {
-    std::string vlc_frames_save =
-        filepath + "/robot_" + std::to_string(robot_pose_id.first) + "_vlc_frames.json";
-    LOG(INFO) << "Saving loop closure Frames to " << vlc_frames_save;
-    lcd::saveVLCFrames(lcd_->getVLCFrames(robot_pose_id.first), vlc_frames_save);
-  }
-}
-
-void DistributedLoopClosure::loadBowVectors(size_t robot_id,
-                                            const std::string& bow_json) {
-  ROS_INFO_STREAM("Loading BoW vectors from " << bow_json);
-  std::map<lcd::PoseId, lcd::VLADLoopClosureDetector::GlobalDesc> bow_vectors;
-  lcd::loadGlobalDesc(bow_json, bow_vectors);
-  ROS_INFO_STREAM("Loaded " << bow_vectors.size() << " BoW vectors.");
-  bow_latest_[robot_id] = 0;
-  bow_received_[robot_id] = std::unordered_set<lcd::PoseId>();
-  for (const auto& id_bow : bow_vectors) {
-    lcd::RobotPoseId id(robot_id, id_bow.first);
-    lcd_->addGlobalDesc(id, id_bow.second);
-    bow_latest_[robot_id] = id_bow.first;
-    bow_received_[robot_id].insert(id_bow.first);
-  }
-}
-
-void DistributedLoopClosure::loadVLCFrames(size_t robot_id,
-                                           const std::string& vlc_json) {
-  ROS_INFO_STREAM("Loading VLC frames from " << vlc_json);
-  std::map<lcd::PoseId, lcd::VLCFrame> vlc_frames;
-  lcd::loadVLCFrames(vlc_json, vlc_frames);
-  ROS_INFO_STREAM("Loaded " << vlc_frames.size() << " VLC frames.");
-
-  for (const auto& id_vlc : vlc_frames) {
-    lcd::RobotPoseId id(robot_id, id_vlc.first);
-    lcd_->addVLCFrame(id, id_vlc.second);
-  }
 }
 
 void DistributedLoopClosure::createLogFiles() {

@@ -46,6 +46,5 @@ min_sim_vlad: 0.7
 
 gt_files:
   [
-    "/datasets_extra/graco/aerial-03-20m.txt",
-    "/datasets_extra/graco/aerial-04-40m.txt",
+
   ]

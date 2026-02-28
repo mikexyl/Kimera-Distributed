@@ -231,27 +231,6 @@ class DistributedLoopClosure {
    * T_submap_keyframe to be consistent with the new submap pose.
    */
   void updateSubmapPoses();
-
-  /**
-   * Save the Bow vectors from this session
-   */
-  void saveBowVectors(const std::string& filepath) const;
-
-  /**
-   * Save the VLC frames from this session
-   */
-  void saveVLCFrames(const std::string& filepath) const;
-
-  /**
-   * Load Bow vectors into this session (! caution !)
-   */
-  void loadBowVectors(size_t robot_id, const std::string& bow_json);
-
-  /**
-   * Load VLC frames into this session (! caution !)
-   */
-  void loadVLCFrames(size_t robot_id, const std::string& vlc_json);
-
   /**
    * @brief Create log files
    */

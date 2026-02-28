@@ -536,8 +536,9 @@ void DistributedLoopClosureRos::publishBowVectors() {
     CHECK(pose_timestamp_map_.at(robot_pose_id) != 0);
     query_msg.header.stamp =
         ros::Time().fromNSec(pose_timestamp_map_.at(robot_pose_id));
-    kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(robot_pose_id),
+    kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(robot_pose_id).descriptor,
                                         &(query_msg.bow_vector));
+    query_msg.bow_vector.scores = lcd_->getGlobalDesc(robot_pose_id).scores;
     msg.queries.push_back(query_msg);
   }
   bow_response_pub_.publish(msg);
@@ -557,9 +558,9 @@ void DistributedLoopClosureRos::publishLatestBowVector() {
     CHECK(pose_timestamp_map_.find(latest_id) != pose_timestamp_map_.end());
     CHECK(pose_timestamp_map_.at(latest_id) != 0);
     query_msg.header.stamp = ros::Time().fromNSec(pose_timestamp_map_.at(latest_id));
-    kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(latest_id),
+    kimera_multi_lcd::MatToBowVectorMsg(lcd_->getGlobalDesc(latest_id).descriptor,
                                         &(query_msg.bow_vector));
-
+    query_msg.bow_vector.scores = lcd_->getGlobalDesc(latest_id).scores;
     pose_graph_tools_msgs::BowQueries msg;
     msg.header.stamp = ros::Time::now();
     msg.queries.push_back(query_msg);
@@ -852,8 +853,5 @@ void DistributedLoopClosureRos::publishSubmapOfflineInfo() {
   }
 }
 
-void DistributedLoopClosureRos::save() {
-  saveBowVectors(config_.log_output_dir_);
-  saveVLCFrames(config_.log_output_dir_);
-}
+void DistributedLoopClosureRos::save() {}
 }  // namespace kimera_distributed
