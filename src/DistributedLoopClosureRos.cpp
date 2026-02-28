@@ -117,6 +117,7 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
   ros::param::get("~loop_sync_sleep_time", config.loop_sync_sleep_time_);
 
   ros::param::get("~min_sim_vlad", config.lcd_params_.min_sim_vlad);
+  ros::param::get("~use_score_combination", config.lcd_params_.use_score_combination);
 
   // TF
   if (!ros::param::get("~latest_kf_frame_id", latest_kf_frame_id_)) {

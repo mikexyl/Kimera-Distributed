@@ -43,6 +43,7 @@ network_input_width: 320
 network_input_height: 224
 
 min_sim_vlad: 0.8
+use_score_combination: true
 
 gt_files:
   [
