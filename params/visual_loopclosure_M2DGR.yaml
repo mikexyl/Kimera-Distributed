@@ -52,6 +52,6 @@ gt_files:
     "/datasets_extra/m2dgr/gate_03.txt",
   ]
 
-adaptive_scoring_tau_max: 0.5
-adaptive_scoring_tau_min: 0.05
+adaptive_scoring_tau_max: 0
+adaptive_scoring_tau_min: 0
 adaptive_scoring_lambda: 0.1

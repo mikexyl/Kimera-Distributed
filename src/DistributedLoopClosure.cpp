@@ -793,8 +793,14 @@ void DistributedLoopClosure::verifyLoopSpin() {
                                       frame1.pose_id_);
           gtsam::Symbol keyframe_to(robot_id_to_prefix.at(frame2.robot_id_),
                                     frame2.pose_id_);
-          static const gtsam::SharedNoiseModel& noise =
-              gtsam::noiseModel::Isotropic::Variance(6, 1e-2);
+          auto scores_q = lcd_->getGlobalDesc(vertex_query).scores;
+          auto scores_m = lcd_->getGlobalDesc(vertex_match).scores;
+          double timed_scores = 1.0;
+          for (size_t i = 0; i < scores_q.size(); ++i) {
+            timed_scores *= scores_q[i] * scores_m[i];
+          }
+          double variance = 1e-2 / std::max(timed_scores, 1e-6);
+          auto noise = gtsam::noiseModel::Isotropic::Variance(6, variance);
 
           // Log loop closure between keyframes
           keyframe_loop_closures_.add(gtsam::BetweenFactor<gtsam::Pose3>(
@@ -881,6 +887,8 @@ pose_graph_tools_msgs::PoseGraph DistributedLoopClosure::getSubmapPoseGraph(
     edge.key_to = submap_dst->id();
     edge.type = pose_graph_tools_msgs::PoseGraphEdge::ODOM;
     edge.pose = GtsamPoseToRos(T_src_dst);
+    edge.covariance.fill(0.0);
+    for (int i = 0; i < 6; i++) edge.covariance[i * 6 + i] = 0.01;
     edge.header.stamp.fromNSec(submap_dst->stamp());
     // TODO(yun) add frame id param
     edge.header.frame_id = config_.frame_id_;
@@ -976,9 +984,6 @@ void DistributedLoopClosure::updateSubmapLoops() {
   // Clear existing submap loop closures
   submap_loop_closures_.clear();
 
-  static const gtsam::SharedNoiseModel& noise =
-      gtsam::noiseModel::Isotropic::Variance(6, 1e-2);
-
   // Iterate through all keyframe loop closures
   for (const auto& factor : keyframe_loop_closures_) {
     auto between_factor =
@@ -986,6 +991,8 @@ void DistributedLoopClosure::updateSubmapLoops() {
     if (!between_factor) {
       continue;
     }
+
+    gtsam::SharedNoiseModel noise = between_factor->noiseModel();
 
     gtsam::Symbol key1(between_factor->key1());
     gtsam::Symbol key2(between_factor->key2());
