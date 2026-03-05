@@ -118,6 +118,9 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
 
   ros::param::get("~min_sim_vlad", config.lcd_params_.min_sim_vlad);
   ros::param::get("~use_score_combination", config.lcd_params_.use_score_combination);
+  ros::param::get("~adaptive_scoring_tau_max", config.lcd_params_.adaptive_scoring_tau_max);
+  ros::param::get("~adaptive_scoring_tau_min", config.lcd_params_.adaptive_scoring_tau_min);
+  ros::param::get("~adaptive_scoring_lambda", config.lcd_params_.adaptive_scoring_lambda);
 
   // TF
   if (!ros::param::get("~latest_kf_frame_id", latest_kf_frame_id_)) {

@@ -674,6 +674,26 @@ void DistributedLoopClosure::detectLoop(
   const lcd::PoseId pose_query = vertex_query.second;
   std::vector<lcd::RobotPoseId> vertex_matches;
   std::vector<double> match_scores;
+
+  std::unordered_map<lcd::RobotId, uint64_t> time_since_last_loop{};
+
+  auto latest_kf = submap_atlas_->getLatestKeyframe();
+  if (latest_kf) {
+    const uint64_t now_ns = latest_kf->stamp();
+    for (lcd::RobotId robot_id = 0; robot_id < config_.num_robots_; ++robot_id) {
+      if (last_verified_loop_stamp_ns_.count(robot_id)) {
+        const uint64_t last_ns = last_verified_loop_stamp_ns_.at(robot_id);
+        time_since_last_loop[robot_id] = (now_ns > last_ns) ? (now_ns - last_ns) : 0;
+      } else {
+        time_since_last_loop[robot_id] = std::numeric_limits<uint64_t>::max();
+      }
+    }
+  } else {
+    for (lcd::RobotId robot_id = 0; robot_id < config_.num_robots_; ++robot_id) {
+      time_since_last_loop[robot_id] = std::numeric_limits<uint64_t>::max();
+    }
+  }
+
   {  // start lcd critical section
     std::unique_lock<std::mutex> lcd_lock(lcd_mutex_);
 
@@ -681,7 +701,11 @@ void DistributedLoopClosure::detectLoop(
     // Detect loop closures with all robots in the database
     // (including myself if inter_robot_only is set to false)
     if (robot_query == config_.my_id_) {
-      if (lcd_->detectLoop(vertex_query, bow_vec, &vertex_matches, &match_scores)) {
+      if (lcd_->detectLoop(vertex_query,
+                           bow_vec,
+                           &vertex_matches,
+                           &match_scores,
+                           time_since_last_loop)) {
         for (size_t i = 0; i < vertex_matches.size(); ++i) {
           lcd::PotentialVLCEdge potential_edge(
               vertex_query, vertex_matches[i], match_scores[i]);
@@ -698,8 +722,12 @@ void DistributedLoopClosure::detectLoop(
     // Incoming bow vector is from another robot
     // Detect loop closures ONLY with my trajectory
     if (robot_query != config_.my_id_) {
-      if (lcd_->detectLoopWithRobot(
-              config_.my_id_, vertex_query, bow_vec, &vertex_matches, &match_scores)) {
+      if (lcd_->detectLoopWithRobot(config_.my_id_,
+                                    vertex_query,
+                                    bow_vec,
+                                    &vertex_matches,
+                                    &match_scores,
+                                    time_since_last_loop[robot_query])) {
         for (size_t i = 0; i < vertex_matches.size(); ++i) {
           lcd::PotentialVLCEdge potential_edge(
               vertex_query, vertex_matches[i], match_scores[i]);
@@ -781,6 +809,9 @@ void DistributedLoopClosure::verifyLoopSpin() {
           }
           num_loops_with_robot_[other_robot] += 1;
           num_gv_loops_++;
+          if (auto latest_kf = submap_atlas_->getLatestKeyframe()) {
+            last_verified_loop_stamp_ns_[other_robot] = latest_kf->stamp();
+          }
 
           LOG(INFO) << "Verified loop (" << vertex_query.first << ","
                     << vertex_query.second << ")-(" << vertex_match.first << ","

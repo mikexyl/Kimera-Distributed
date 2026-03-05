@@ -50,6 +50,9 @@ class DistributedLoopClosure {
   std::vector<size_t> received_vlc_descriptor_bytes_;
   size_t num_pr_loops_ = 0;
   size_t num_gv_loops_ = 0;
+  // Timestamp (ns) of the local pose involved in the last verified loop closure,
+  // keyed by the other robot's ID. Zero-initialized on first access.
+  std::unordered_map<lcd::RobotId, uint64_t> last_verified_loop_stamp_ns_;
 
   // Submap Atlas
   std::unique_ptr<SubmapAtlas> submap_atlas_;
