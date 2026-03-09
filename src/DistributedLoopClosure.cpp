@@ -799,7 +799,7 @@ void DistributedLoopClosure::verifyLoopSpin() {
           for (size_t i = 0; i < scores_q.size(); ++i) {
             timed_scores *= scores_q[i] * scores_m[i];
           }
-          double variance = 1e-2 / std::max(timed_scores, 1e-6);
+          double variance = 1 / std::sqrt(std::max(timed_scores, 1e-6));
           auto noise = gtsam::noiseModel::Isotropic::Variance(6, variance);
 
           // Log loop closure between keyframes

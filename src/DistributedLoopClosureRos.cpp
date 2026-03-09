@@ -118,9 +118,16 @@ DistributedLoopClosureRos::DistributedLoopClosureRos(const ros::NodeHandle& n)
 
   ros::param::get("~min_sim_vlad", config.lcd_params_.min_sim_vlad);
   ros::param::get("~use_score_combination", config.lcd_params_.use_score_combination);
-  ros::param::get("~adaptive_scoring_tau_max", config.lcd_params_.adaptive_scoring_tau_max);
-  ros::param::get("~adaptive_scoring_tau_min", config.lcd_params_.adaptive_scoring_tau_min);
-  ros::param::get("~adaptive_scoring_lambda", config.lcd_params_.adaptive_scoring_lambda);
+  ros::param::get("~adaptive_scoring_tau_max",
+                  config.lcd_params_.adaptive_scoring_tau_max);
+  ros::param::get("~adaptive_scoring_tau_min",
+                  config.lcd_params_.adaptive_scoring_tau_min);
+  ros::param::get("~adaptive_scoring_lambda",
+                  config.lcd_params_.adaptive_scoring_lambda);
+  int vlad_scoring_mode_int = 0;
+  ros::param::get("~scoring_mode", vlad_scoring_mode_int);
+  config.lcd_params_.vlad_scoring_mode =
+      static_cast<kimera_multi_lcd::LcdParams::VladScoringMode>(vlad_scoring_mode_int);
 
   // TF
   if (!ros::param::get("~latest_kf_frame_id", latest_kf_frame_id_)) {

@@ -34,3 +34,4 @@ netvlad_model_path: /workspaces/src/xfeat-cpp/onnx_model/netvlad.onnx
 local_window_size: 10
 
 lcd_min_matched_features: 30
+scoring_mode: 0  # 0=COMBINED_SCORE, 1=VPR_SIMILARITY

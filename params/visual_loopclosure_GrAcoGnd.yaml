@@ -44,6 +44,7 @@ network_input_height: 224
 
 min_sim_vlad: 0.8
 use_score_combination: true
+scoring_mode: 0  # 0=COMBINED_SCORE, 1=VPR_SIMILARITY
 
 gt_files:
   [
@@ -51,3 +52,7 @@ gt_files:
     "/datasets_extra/graco/ground-02.txt",
     "/datasets_extra/graco/ground-03.txt",
   ]
+
+adaptive_scoring_tau_max: 0.6
+adaptive_scoring_tau_min: 0.2
+adaptive_scoring_lambda: 0.05
