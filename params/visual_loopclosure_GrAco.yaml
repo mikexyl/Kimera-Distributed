@@ -44,9 +44,13 @@ network_input_height: 224
 
 min_sim_vlad: 0.7
 use_score_combination: true
-scoring_mode: 0  # 0=COMBINED_SCORE, 1=VPR_SIMILARITY
+scoring_mode: 1  # 0=COMBINED_SCORE, 1=VPR_SIMILARITY
 
 gt_files:
   [
 
   ]
+
+adaptive_scoring_tau_max: 0.7
+adaptive_scoring_tau_min: 0.7
+adaptive_scoring_lambda: 0.0

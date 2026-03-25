@@ -26,6 +26,11 @@
   <arg name="max_submap_distance"     default="5" />
   <arg name="max_submap_size"         default="10" />
 
+  <!-- Adaptive scoring parameters -->
+  <arg name="adaptive_scoring_tau_max" default="0.8" />
+  <arg name="adaptive_scoring_tau_min" default="0.8" />
+  <arg name="adaptive_scoring_lambda"  default="0.0" />
+
   <!-- Offline mode -->
   <arg name="run_offline"             default="false"/>
   <arg name="offline_dir"             default=""/>
@@ -63,6 +68,9 @@
       <arg name="robot_names_config"        value="$(arg robot_names_config)"/>
       <arg name="vocab_path"                value="$(arg vocab_path)"/>
       <arg name="log_output_path"           value="$(arg log_output_path)/"/>
+      <arg name="adaptive_scoring_tau_max"  value="$(arg adaptive_scoring_tau_max)"/>
+      <arg name="adaptive_scoring_tau_min"  value="$(arg adaptive_scoring_tau_min)"/>
+      <arg name="adaptive_scoring_lambda"   value="$(arg adaptive_scoring_lambda)"/>
     </include>
 
     <node if="$(arg monitor_bw)" pkg="panoptes" type="ros_bw_monitor.py" name="bw_motinor">

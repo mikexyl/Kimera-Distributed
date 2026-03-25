@@ -20,6 +20,11 @@
   <arg name="comm_sleep_time"      default="5" />
   <arg name="loop_sync_sleep_time" default="5"/>
   <arg name="detection_batch_size" default="30" />
+  <!-- Adaptive scoring parameters -->
+  <arg name="adaptive_scoring_tau_max" default="0.8" />
+  <arg name="adaptive_scoring_tau_min" default="0.8" />
+  <arg name="adaptive_scoring_lambda"  default="0.0" />
+
   <!-- Debug -->
   <arg name="debug"              default="false" />
   <arg name="launch_prefix"      value="kitty -e gdb -ex run \-\-args" if="$(arg debug)"/>
@@ -58,6 +63,10 @@
     <param name="max_submap_distance"    value="$(arg max_submap_distance)"/>
     <rosparam file="$(find kimera_distributed)/params/visual_loopclosure_$(arg dataset_name).yaml"/>
     <rosparam file="$(find kimera_distributed)/params/$(arg robot_names_config).yaml" />
+    <!-- Override adaptive scoring params (allow launch-time sweep without editing the yaml) -->
+    <param name="adaptive_scoring_tau_max" value="$(arg adaptive_scoring_tau_max)"/>
+    <param name="adaptive_scoring_tau_min" value="$(arg adaptive_scoring_tau_min)"/>
+    <param name="adaptive_scoring_lambda"  value="$(arg adaptive_scoring_lambda)"/>
   </node>
 
   <include file="$(find pose_graph_tools_ros)/launch/posegraph_view.launch" >

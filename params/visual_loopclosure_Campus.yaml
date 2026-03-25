@@ -50,3 +50,7 @@ gt_files:
   [
 
   ]
+
+adaptive_scoring_tau_max: 0.8
+adaptive_scoring_tau_min: 0.8
+adaptive_scoring_lambda: 0.05
